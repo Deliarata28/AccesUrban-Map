@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AccessibleMap", "AccessibleMap.csproj", "{B96ACACD-3B2B-4334-8B05-C02B5710756B}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B96ACACD-3B2B-4334-8B05-C02B5710756B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B96ACACD-3B2B-4334-8B05-C02B5710756B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B96ACACD-3B2B-4334-8B05-C02B5710756B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B96ACACD-3B2B-4334-8B05-C02B5710756B}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
