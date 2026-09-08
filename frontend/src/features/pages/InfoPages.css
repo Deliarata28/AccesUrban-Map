@@ -1,0 +1,14 @@
+.content-page {
+  width: min(1240px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.empty-content-page {
+  min-height: clamp(360px, 52vh, 560px);
+}
+
+@media (max-width: 560px) {
+  .content-page {
+    width: min(100% - 24px, 1240px);
+  }
+}
