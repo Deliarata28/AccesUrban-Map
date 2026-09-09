@@ -1,6 +1,7 @@
 import { UserRound } from "lucide-react";
-import { useLocation } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { mainNavigation } from "../config/navigation";
+import accessibilityLogo from "../assets/accessurban-accessibility-logo-clean.png";
 import "./Header.css";
 
 export function Header() {
@@ -20,7 +21,9 @@ export function Header() {
     <div className="header-shell">
       <header className="site-header">
         <a className="brand" href="/home" aria-label="AccesUrban Map acasa">
-          <span className="brand-mark">AU</span>
+          <span className="brand-mark">
+            <img src={accessibilityLogo} alt="" aria-hidden="true" />
+          </span>
           <span className="brand-text">
             <strong>AccesUrban Map</strong>
             <small>Chișinau fără bariere</small>
@@ -44,9 +47,9 @@ export function Header() {
         </nav>
 
         <div className="header-actions">
-          <button className="login-link" type="button" aria-label="Autentificare">
+          <Link className="login-link" to="/autentificare" aria-label="Autentificare">
             <UserRound aria-hidden="true" size={22} strokeWidth={2.1} />
-          </button>
+          </Link>
 
           <a className="header-action" href="/map">
             Vezi harta

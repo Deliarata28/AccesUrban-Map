@@ -1,5 +1,6 @@
 import { Mail } from "lucide-react";
 import { footerNavigation } from "../config/navigation";
+import accessibilityLogo from "../assets/accessurban-accessibility-logo-clean.png";
 import "./Footer.css";
 
 const resourceLinks = [
@@ -28,8 +29,13 @@ export function Footer() {
       <div className="footer-inner">
         <section className="footer-about" aria-labelledby="footer-brand-title">
           <a className="footer-brand" href="/home#acasa" aria-label="AccesUrban Map acasă">
-            <span className="footer-brand-mark">AU</span>
-            <span id="footer-brand-title">AccesUrban Map</span>
+            <span className="footer-brand-mark">
+              <img src={accessibilityLogo} alt="" aria-hidden="true" />
+            </span>
+            <span className="footer-brand-copy" id="footer-brand-title">
+              <strong>AccesUrban Map</strong>
+              <small>Chișinău fără bariere</small>
+            </span>
           </a>
           <p>
             AccesUrban Map este o aplicație web dedicată îmbunătățirii calității
