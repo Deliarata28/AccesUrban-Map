@@ -10,14 +10,27 @@
 
 import { Route as rootRouteImport } from './app/routes/__root'
 import { Route as IndexRouteImport } from './app/routes/index'
+import { Route as AutentificareRouteImport } from './app/routes/autentificare'
+import { Route as ConectareRouteImport } from './app/routes/conectare'
 import { Route as ContacteRouteImport } from './app/routes/contacte'
 import { Route as HomeRouteImport } from './app/routes/home'
+import { Route as InregistrareRouteImport } from './app/routes/inregistrare'
 import { Route as MapRouteImport } from './app/routes/map'
 import { Route as ProgrameRouteImport } from './app/routes/programe'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AutentificareRoute = AutentificareRouteImport.update({
+  id: '/autentificare',
+  path: '/autentificare',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConectareRoute = ConectareRouteImport.update({
+  id: '/conectare',
+  path: '/conectare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ContacteRoute = ContacteRouteImport.update({
@@ -28,6 +41,11 @@ const ContacteRoute = ContacteRouteImport.update({
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InregistrareRoute = InregistrareRouteImport.update({
+  id: '/inregistrare',
+  path: '/inregistrare',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapRoute = MapRouteImport.update({
@@ -43,38 +61,75 @@ const ProgrameRoute = ProgrameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/autentificare': typeof AutentificareRoute
+  '/conectare': typeof ConectareRoute
   '/contacte': typeof ContacteRoute
   '/home': typeof HomeRoute
+  '/inregistrare': typeof InregistrareRoute
   '/map': typeof MapRoute
   '/programe': typeof ProgrameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/autentificare': typeof AutentificareRoute
+  '/conectare': typeof ConectareRoute
   '/contacte': typeof ContacteRoute
   '/home': typeof HomeRoute
+  '/inregistrare': typeof InregistrareRoute
   '/map': typeof MapRoute
   '/programe': typeof ProgrameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/autentificare': typeof AutentificareRoute
+  '/conectare': typeof ConectareRoute
   '/contacte': typeof ContacteRoute
   '/home': typeof HomeRoute
+  '/inregistrare': typeof InregistrareRoute
   '/map': typeof MapRoute
   '/programe': typeof ProgrameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/contacte' | '/home' | '/map' | '/programe'
+  fullPaths:
+    | '/'
+    | '/autentificare'
+    | '/conectare'
+    | '/contacte'
+    | '/home'
+    | '/inregistrare'
+    | '/map'
+    | '/programe'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/contacte' | '/home' | '/map' | '/programe'
-  id: '__root__' | '/' | '/contacte' | '/home' | '/map' | '/programe'
+  to:
+    | '/'
+    | '/autentificare'
+    | '/conectare'
+    | '/contacte'
+    | '/home'
+    | '/inregistrare'
+    | '/map'
+    | '/programe'
+  id:
+    | '__root__'
+    | '/'
+    | '/autentificare'
+    | '/conectare'
+    | '/contacte'
+    | '/home'
+    | '/inregistrare'
+    | '/map'
+    | '/programe'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AutentificareRoute: typeof AutentificareRoute
+  ConectareRoute: typeof ConectareRoute
   ContacteRoute: typeof ContacteRoute
   HomeRoute: typeof HomeRoute
+  InregistrareRoute: typeof InregistrareRoute
   MapRoute: typeof MapRoute
   ProgrameRoute: typeof ProgrameRoute
 }
@@ -86,6 +141,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/autentificare': {
+      id: '/autentificare'
+      path: '/autentificare'
+      fullPath: '/autentificare'
+      preLoaderRoute: typeof AutentificareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/conectare': {
+      id: '/conectare'
+      path: '/conectare'
+      fullPath: '/conectare'
+      preLoaderRoute: typeof ConectareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/contacte': {
@@ -100,6 +169,13 @@ declare module '@tanstack/react-router' {
       path: '/home'
       fullPath: '/home'
       preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inregistrare': {
+      id: '/inregistrare'
+      path: '/inregistrare'
+      fullPath: '/inregistrare'
+      preLoaderRoute: typeof InregistrareRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/map': {
@@ -121,8 +197,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AutentificareRoute: AutentificareRoute,
+  ConectareRoute: ConectareRoute,
   ContacteRoute: ContacteRoute,
   HomeRoute: HomeRoute,
+  InregistrareRoute: InregistrareRoute,
   MapRoute: MapRoute,
   ProgrameRoute: ProgrameRoute,
 }
