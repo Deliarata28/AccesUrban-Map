@@ -4,7 +4,6 @@ export const mainNavigation: NavigationItem[] = [
   { label: "Acasă", href: "/home#acasa" },
   { label: "Hartă", href: "/map" },
   { label: "Trebuie să știi", href: "/trebuie-sa-stii" },
-  { label: "Facilități", href: "/home#facilitati" },
   { label: "Programe", href: "/programe" },
   { label: "Contacte", href: "/contacte" },
 ];
