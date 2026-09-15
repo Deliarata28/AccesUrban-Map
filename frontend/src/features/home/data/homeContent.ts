@@ -1,6 +1,6 @@
 export const homeFeatures = [
   {
-    title: "Locații verificate",
+    title: "Locații reale",
     text: "Pagina evidențiază locurile unde utilizatorii pot afla rapid dacă există rampă, lift, intrare fără trepte sau parcare accesibilă.",
   },
   {
@@ -45,8 +45,8 @@ export const reportSteps = [
     text: "Notează locul exact, tipul obstacolului și dacă accesul este blocat complet sau doar îngreunat.",
   },
   {
-    title: "Trimite detaliile",
-    text: "Adaugă o descriere clară și, când este posibil, o fotografie care arată situația reală.",
+    title: "Adaugă o fotografie",
+    text: "Scrie ce s-a schimbat și atașează o fotografie care arată situația de la fața locului.",
   },
   {
     title: "Datele se verifică",

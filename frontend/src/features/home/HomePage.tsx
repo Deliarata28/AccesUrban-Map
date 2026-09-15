@@ -1,4 +1,5 @@
 import { HandHeart } from "lucide-react";
+import { motion } from "framer-motion";
 import { Link } from "@tanstack/react-router";
 import heroImage from "../../assets/accesurban-map-hero.png";
 import { Footer } from "../../components/Footer";
@@ -24,11 +25,14 @@ export function HomePage() {
       <Header />
 
       <main id="continut">
-        <section
+        <motion.section
           className="hero-section"
           id="acasa"
           aria-labelledby="home-title"
           style={{ backgroundImage: `url(${heroImage})` }}
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: "easeOut" }}
         >
           <div className="hero-copy">
             <p className="eyebrow">Acces Urban Map</p>
@@ -43,11 +47,11 @@ export function HomePage() {
                 Vezi harta
               </Link>
               <a className="button secondary" href="#raportare">
-                Raportează o problemă
+                Implică-te în comunitate
               </a>
             </div>
           </div>
-        </section>
+        </motion.section>
 
         <section className="quote-section" aria-label="Citat despre accesibilitate">
           <blockquote>
@@ -66,11 +70,18 @@ export function HomePage() {
 
           <div className="journey-grid">
             {journeyHighlights.map((item, index) => (
-              <article className="info-card" key={item.title}>
+              <motion.article
+                className="info-card"
+                key={item.title}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.2 }}
+                transition={{ duration: 0.4, delay: index * 0.08 }}
+              >
                 <span className="info-index">{String(index + 1).padStart(2, "0")}</span>
                 <h3>{item.title}</h3>
                 <p>{item.text}</p>
-              </article>
+              </motion.article>
             ))}
           </div>
         </section>
@@ -98,7 +109,7 @@ export function HomePage() {
           <Link className="map-preview" to="/map" aria-label="Deschide harta accesibilă">
             <div className="map-toolbar">
               <span>Centru, Chișinău</span>
-              <span>Locații disponibile</span>
+              <span>Locații din Chișinău</span>
             </div>
 
             <div className="map-canvas">
@@ -156,6 +167,7 @@ export function HomePage() {
           <p>
             Raportările ajută la corectarea informațiilor despre rampe blocate,
             trotuare deteriorate, lifturi indisponibile sau intrări greu de folosit.
+            Poți adăuga și o fotografie, ca situația să fie mai ușor de verificat.
           </p>
 
           <div className="report-grid">
