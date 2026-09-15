@@ -20,6 +20,7 @@ export function LocationSearch({
   onSelect,
   onClear,
   placeholder,
+  autoFocus = false,
 }: {
   label: string;
   places: MapPlace[];
@@ -27,6 +28,7 @@ export function LocationSearch({
   onSelect: (option: LocationOption) => void;
   onClear: () => void;
   placeholder?: string;
+  autoFocus?: boolean;
 }) {
   const [text, setText] = useState(value?.label ?? "");
   const [open, setOpen] = useState(false);
@@ -120,6 +122,7 @@ export function LocationSearch({
       <Search size={17} className="location-search-icon" />
       <Input
         id={id}
+        autoFocus={autoFocus}
         autoComplete="off"
         role="combobox"
         aria-expanded={open}

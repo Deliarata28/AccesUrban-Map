@@ -13,6 +13,7 @@ export const Route = createFileRoute("/map")({
     reportTargetId?: string;
     reportName?: string;
     reportAddress?: string;
+    mode?: "search" | "route" | "report";
   } => {
     const coordinate = (value: unknown) => {
       const parsed = typeof value === "number" ? value : Number(value);
@@ -33,6 +34,12 @@ export const Route = createFileRoute("/map")({
       reportAddress:
         typeof search.reportAddress === "string"
           ? search.reportAddress
+          : undefined,
+      mode:
+        search.mode === "search" ||
+        search.mode === "route" ||
+        search.mode === "report"
+          ? search.mode
           : undefined,
     };
   },

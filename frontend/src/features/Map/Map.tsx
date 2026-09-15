@@ -423,6 +423,16 @@ export function Map() {
     setPanel(null);
   }, [search.lat, search.lng]);
   useEffect(() => {
+    if (search.mode === "route") {
+      setPicking(null);
+      setPanel("route");
+    }
+    if (search.mode === "report" && user) {
+      setPanel(null);
+      setPicking("report");
+    }
+  }, [search.mode, user]);
+  useEffect(() => {
     if (
       !user ||
       search.reportLat === undefined ||
@@ -731,6 +741,7 @@ export function Map() {
           value={searchValue}
           onSelect={chooseSearch}
           onClear={reset}
+          autoFocus={search.mode === "search"}
         />
         <Button
           variant="secondary"
