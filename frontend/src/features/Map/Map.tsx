@@ -1,1391 +1,1547 @@
-import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
-import L from "leaflet";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
+import { useNavigate, useSearch, Link } from "@tanstack/react-router";
 import {
-  MapContainer,
-  Marker,
-  Polyline,
-  Popup,
-  TileLayer,
-  ZoomControl,
-  useMap,
-} from "react-leaflet";
-import { Accessibility, Bus, Car, Layers3, LocateFixed, MapPinned, Route, Satellite, Search, X } from "lucide-react";
-
-import "leaflet/dist/leaflet.css";
+  ArrowLeft, ArrowLeftRight, CarFront, Check, ChevronRight, Clock3, Flag, Layers3, List, LocateFixed, MapPin, Pencil, Route, ShieldCheck, SlidersHorizontal, X,
+} from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { Label } from "../../components/ui/label";
+import { ChoiceMenu } from "../../components/ChoiceMenu";
+import { usePlaces, usePublicReports } from "../../hooks/useAppData";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import {
+  accessibilityFeatures,
+  accessibilityValueLabel,
+  placeCategories,
+  sourceLabels,
+  statusMeta,
+} from "../../config/accessibility";
+import type { AccessibilityProfile } from "../../stores/authStore";
+import { reportTypeLabels, type MockReportType } from "../../stores/reportStore";
+import { applyObstacleOverrides } from "../../stores/obstacleStore";
+import type { MapPlace, Position } from "../../types/place";
+import {
+  evaluateAccessibility,
+  filterPlaces,
+  type PlaceFilters,
+} from "../../utils/accessibility";
+import { StatusBadge } from "../admin/AdminShared";
+import { ObstacleEditor } from "../admin/ObstacleEditor";
+import { ReportDialog, type ReportTarget } from "../reports/ReportDialog";
+import { MapCanvas } from "./MapCanvas";
+import { LocationSearch, type LocationOption } from "./LocationSearch";
+import { reverseGeocodeMapPosition } from "../../services/locationSearch";
+import {
+  discoverAccessibleParking,
+  type ParkingLocation,
+} from "./Parking";
+import {
+  getRouteAccessibility,
+  ROUTE_OBSTACLE_CORRIDOR_METERS,
+  type RouteRoadName,
+  type AccessibilityPoint,
+} from "../../services/osmAccessibility";
+import {
+  buildRouteGuidance,
+  getRoutes,
+  profileLabels,
+  travelModeLabels,
+  formatDuration,
+  formatDistance,
+  type TravelMode,
+} from "./routing";
 import "./Map.css";
 
-type AccessibilityStatus = "accesibil" | "partial" | "redus" | "necunoscut";
-type BaseLayerKey = "strazi" | "satelit";
-type TravelMode = "wheelchair" | "transit" | "driving";
-type Position = [number, number];
-type AccessibilityValue = "da" | "nu" | "necunoscut";
-type AccessibilityFeature =
-  | "rampa"
-  | "intrareFaraTrepte"
-  | "lift"
-  | "toaletaAccesibila"
-  | "parcareAccesibila"
-  | "pavajTactil"
-  | "semnalAudio";
-
-type MapPlace = {
-  id: string;
-  name: string;
-  address: string;
-  status: AccessibilityStatus;
-  position: Position;
-  note: string;
-  category: string;
-  categoryColor: string;
-  aliases?: string[];
-  accessibility: Record<AccessibilityFeature, AccessibilityValue>;
-};
-
-type LocationOption = {
-  position: Position;
-  label: string;
-  detail?: string;
-};
-
-type AccessibleParking = {
-  id: number;
-  position: Position;
-  name: string;
-  capacity?: string;
-};
-
-type RouteInfo = {
-  coordinates: Position[];
-  distance: number;
-  duration: number;
-  directions: Array<{
-    instruction: string;
-    distance: number;
-    position: Position;
-    symbol: string;
-  }>;
-};
-
-const accessibilityFeatures: Array<{
-  key: AccessibilityFeature;
-  label: string;
-  points: number;
-}> = [
-  { key: "rampa", label: "Rampă", points: 20 },
-  { key: "intrareFaraTrepte", label: "Intrare fără trepte", points: 25 },
-  { key: "lift", label: "Lift", points: 15 },
-  { key: "toaletaAccesibila", label: "Toaletă accesibilă", points: 15 },
-  { key: "parcareAccesibila", label: "Parcare accesibilă", points: 10 },
-  { key: "pavajTactil", label: "Pavaj tactil", points: 10 },
-  { key: "semnalAudio", label: "Semnal audio", points: 5 },
-];
-
-const DEFAULT_CENTER: Position = [47.0105, 28.8353];
-const DEFAULT_ZOOM = 13;
-const ACCESSIBLE_PARKING_QUERY =
-  "[out:json][timeout:25];(" +
-  'node(46.94,28.75,47.10,28.95)["amenity"="parking_space"]["parking_space"="disabled"];' +
-  'way(46.94,28.75,47.10,28.95)["amenity"="parking_space"]["parking_space"="disabled"];' +
-  'node(46.94,28.75,47.10,28.95)["amenity"="parking"]["disabled"="yes"];' +
-  'way(46.94,28.75,47.10,28.95)["amenity"="parking"]["disabled"="yes"];' +
-  'node(46.94,28.75,47.10,28.95)["amenity"="parking"]["disabled"="designated"];' +
-  'way(46.94,28.75,47.10,28.95)["amenity"="parking"]["disabled"="designated"];' +
-  'node(46.94,28.75,47.10,28.95)["amenity"="parking"]["capacity:disabled"];' +
-  'way(46.94,28.75,47.10,28.95)["amenity"="parking"]["capacity:disabled"];' +
-  'node(46.94,28.75,47.10,28.95)["amenity"="parking_space"]["wheelchair"="designated"];' +
-  'way(46.94,28.75,47.10,28.95)["amenity"="parking_space"]["wheelchair"="designated"];' +
-  ");out center tags;";
-
-const layers = {
-  strazi: {
-    label: "Străzi",
-    hint: "Hartă clară pentru orientare.",
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">Contribuitorii OpenStreetMap</a>',
-  },
-  satelit: {
-    label: "Satelit",
-    hint: "Imagini aeriene pentru orientare.",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "Imagini &copy; Esri",
-  },
-} satisfies Record<BaseLayerKey, { label: string; hint: string; url: string; attribution: string }>;
-
-const statusMeta: Record<AccessibilityStatus, { label: string; color: string }> = {
-  accesibil: { label: "Accesibil", color: "#76b798" },
-  partial: { label: "Parțial accesibil", color: "#d7ae5d" },
-  redus: { label: "Acces redus", color: "#d87f91" },
-  necunoscut: { label: "Necunoscut", color: "#9aa8b6" },
-};
-
-const accessibilityProfiles: Record<
-  "good" | "complete" | "partial" | "limited" | "unknown",
-  Record<AccessibilityFeature, AccessibilityValue>
-> = {
-  good: {
-    rampa: "da",
-    intrareFaraTrepte: "da",
-    lift: "da",
-    toaletaAccesibila: "da",
-    parcareAccesibila: "da",
-    pavajTactil: "da",
-    semnalAudio: "nu",
-  },
-  complete: {
-    rampa: "da",
-    intrareFaraTrepte: "da",
-    lift: "da",
-    toaletaAccesibila: "da",
-    parcareAccesibila: "da",
-    pavajTactil: "da",
-    semnalAudio: "da",
-  },
-  partial: {
-    rampa: "da",
-    intrareFaraTrepte: "da",
-    lift: "nu",
-    toaletaAccesibila: "da",
-    parcareAccesibila: "nu",
-    pavajTactil: "necunoscut",
-    semnalAudio: "nu",
-  },
-  limited: {
-    rampa: "nu",
-    intrareFaraTrepte: "da",
-    lift: "nu",
-    toaletaAccesibila: "nu",
-    parcareAccesibila: "da",
-    pavajTactil: "nu",
-    semnalAudio: "nu",
-  },
-  unknown: {
-    rampa: "necunoscut",
-    intrareFaraTrepte: "necunoscut",
-    lift: "necunoscut",
-    toaletaAccesibila: "necunoscut",
-    parcareAccesibila: "necunoscut",
-    pavajTactil: "necunoscut",
-    semnalAudio: "necunoscut",
-  },
-};
-
-const places: MapPlace[] = [
-  {
-    id: "biblioteca",
-    name: "Biblioteca Municipală",
-    address: "Bulevardul Ștefan cel Mare 148, Centru",
-    status: "accesibil",
-    position: [47.024, 28.825],
-    note: "Intrare fără trepte, traseu scurt și spațiu bun pentru manevră.",
-    category: "Instituție publică",
-    categoryColor: "#a3bd78",
-    accessibility: {
-      rampa: "da",
-      intrareFaraTrepte: "da",
-      lift: "da",
-      toaletaAccesibila: "da",
-      parcareAccesibila: "nu",
-      pavajTactil: "da",
-      semnalAudio: "nu",
-    },
-  },
-  {
-    id: "policlinica",
-    name: "Spital municipal",
-    address: "Strada București 41, Centru",
-    status: "partial",
-    position: [47.016, 28.836],
-    note: "Acces posibil, dar unele zone au nevoie de ajustări suplimentare.",
-    category: "Spital",
-    categoryColor: "#dc9690",
-    accessibility: {
-      rampa: "da",
-      intrareFaraTrepte: "da",
-      lift: "nu",
-      toaletaAccesibila: "da",
-      parcareAccesibila: "nu",
-      pavajTactil: "necunoscut",
-      semnalAudio: "nu",
-    },
-  },
-  {
-    id: "parcare",
-    name: "Parcare publică",
-    address: "Strada 31 August 1989 78, Centru",
-    status: "redus",
-    position: [47.0085, 28.846],
-    note: "Trotuar îngust și denivelări pe traseul pietonal din apropiere.",
-    category: "Transport",
-    categoryColor: "#7aa9c9",
-    accessibility: {
-      rampa: "nu",
-      intrareFaraTrepte: "da",
-      lift: "nu",
-      toaletaAccesibila: "nu",
-      parcareAccesibila: "da",
-      pavajTactil: "nu",
-      semnalAudio: "nu",
-    },
-  },
-  {
-    id: "mall",
-    name: "Shopping MallDova",
-    address: "Strada Arborilor 21, Botanica",
-    status: "partial",
-    position: [46.9875, 28.8595],
-    note: "Parcarea accesibilă și intrarea aleasă pot fi consultate înainte de deplasare.",
-    category: "Magazin",
-    categoryColor: "#78b4b8",
-    aliases: ["malldova", "mall dova"],
-    accessibility: {
-      rampa: "da",
-      intrareFaraTrepte: "da",
-      lift: "necunoscut",
-      toaletaAccesibila: "necunoscut",
-      parcareAccesibila: "da",
-      pavajTactil: "necunoscut",
-      semnalAudio: "necunoscut",
-    },
-  },
-  {
-    id: "usm",
-    name: "Universitatea de Stat din Moldova",
-    address: "Strada Alexei Mateevici 60, Centru",
-    status: "accesibil",
-    position: [47.0188, 28.8244],
-    note: "Campus universitar accesibil, cu rampă, intrări fără trepte, lift, toaletă accesibilă, parcare rezervată și trasee adaptate.",
-    category: "Universitate",
-    categoryColor: "#93a0d6",
-    aliases: ["usm"],
-    accessibility: accessibilityProfiles.complete,
-  },
-  {
-    id: "utm",
-    name: "Universitatea Tehnică a Moldovei",
-    address: "Strada Studenților 9/9, Rîșcani",
-    status: "accesibil",
-    position: [47.062, 28.86996],
-    note: "Campus UTM prietenos pentru persoane cu mobilitate redusă, cu parcare rezervată, rampă, intrare fără trepte, lift, toaletă accesibilă, pavaj tactil și semnal audio.",
-    category: "Universitate",
-    categoryColor: "#93a0d6",
-    aliases: ["utm", "universitatea tehnica a moldovei", "universitatea tehnică a moldovei"],
-    accessibility: accessibilityProfiles.complete,
-  },
-  {
-    id: "farmacie",
-    name: "Farmacie",
-    address: "Bulevardul Ștefan cel Mare, Centru",
-    status: "accesibil",
-    position: [47.0186, 28.8313],
-    note: "Punct de farmacie disponibil pentru verificare în teren.",
-    category: "Farmacie",
-    categoryColor: "#d58c9b",
-    accessibility: accessibilityProfiles.good,
-  },
-  {
-    id: "hotel-national",
-    name: "Hotel Național",
-    address: "Bulevardul Ștefan cel Mare 4, Centru",
-    status: "partial",
-    position: [47.0138, 28.8339],
-    note: "Verifică disponibilitatea liftului și a intrării fără trepte.",
-    category: "Hotel",
-    categoryColor: "#aa91ca",
-    accessibility: accessibilityProfiles.partial,
-  },
-  {
-    id: "parcul-stefan",
-    name: "Parcul Ștefan cel Mare",
-    address: "Strada 31 August 1989, Centru",
-    status: "partial",
-    position: [47.0249, 28.8296],
-    note: "Alei cu acces variabil, în funcție de intrare.",
-    category: "Parc",
-    categoryColor: "#84ae8c",
-    accessibility: accessibilityProfiles.partial,
-  },
-  {
-    id: "gara",
-    name: "Gara Feroviară Chișinău",
-    address: "Piața Gării 1, Centru",
-    status: "partial",
-    position: [47.0009, 28.8596],
-    note: "Alege o intrare cu acces fără trepte.",
-    category: "Transport",
-    categoryColor: "#7aa9c9",
-    accessibility: accessibilityProfiles.partial,
-  },
-  {
-    id: "restaurant",
-    name: "Restaurant în Centru",
-    address: "Strada București, Centru",
-    status: "accesibil",
-    position: [47.0188, 28.8382],
-    note: "Intrare la nivelul trotuarului.",
-    category: "Restaurant",
-    categoryColor: "#dd9b7b",
-    accessibility: accessibilityProfiles.good,
-  },
-  {
-    id: "liceu",
-    name: "Liceu teoretic",
-    address: "Strada Nicolae Iorga, Centru",
-    status: "redus",
-    position: [47.0217, 28.8219],
-    note: "Accesibilitatea clădirii trebuie confirmată.",
-    category: "Școală",
-    categoryColor: "#d8b657",
-    accessibility: accessibilityProfiles.limited,
-  },
-  {
-    id: "primarie",
-    name: "Primăria Chișinău",
-    address: "Bulevardul Ștefan cel Mare 83, Centru",
-    status: "accesibil",
-    position: [47.0231, 28.8321],
-    note: "Instituție publică cu informații de accesibilitate afișate.",
-    category: "Instituție publică",
-    categoryColor: "#a3bd78",
-    accessibility: accessibilityProfiles.good,
-  },
-  {
-    id: "muzeu",
-    name: "Muzeul Național de Artă",
-    address: "Strada 31 August 1989 115, Centru",
-    status: "necunoscut",
-    position: [47.0221, 28.8267],
-    note: "Datele despre accesibilitate așteaptă confirmare.",
-    category: "Altă locație",
-    categoryColor: "#9caab2",
-    accessibility: accessibilityProfiles.unknown,
-  },
-];
-
-const placeCategories = [
-  { label: "Spital", color: "#dc9690" },
-  { label: "Farmacie", color: "#d58c9b" },
-  { label: "Instituție publică", color: "#a3bd78" },
-  { label: "Școală", color: "#d8b657" },
-  { label: "Universitate", color: "#93a0d6" },
-  { label: "Restaurant", color: "#dd9b7b" },
-  { label: "Magazin", color: "#78b4b8" },
-  { label: "Hotel", color: "#aa91ca" },
-  { label: "Parc", color: "#84ae8c" },
-  { label: "Transport", color: "#7aa9c9" },
-  { label: "Altă locație", color: "#9caab2" },
-];
-
-const placeToLocation = (place: MapPlace): LocationOption => ({
-  position: place.position,
+const asLocation = (place: MapPlace): LocationOption => ({
   label: place.name,
-  detail: place.address,
+  position: place.position,
+  placeId: place.id,
 });
 
-const scoreFor = (place: MapPlace) =>
-  accessibilityFeatures.reduce(
-    (score, feature) =>
-      place.accessibility[feature.key] === "da" ? score + feature.points : score,
-    0,
-  );
+const asReportTarget = (place: MapPlace): ReportTarget => ({
+  id: place.id,
+  name: place.name,
+  address: place.address,
+  position: place.position,
+});
 
-const accessibilityValueLabel: Record<AccessibilityValue, string> = {
-  da: "DA",
-  nu: "NU",
-  necunoscut: "NECUNOSCUT",
-};
-
-function routeInstruction(
-  step: { maneuver?: { type?: string; modifier?: string }; name?: string },
-) {
-  const street = step.name ? " pe " + step.name : "";
-  const type = step.maneuver?.type;
-  const modifier = step.maneuver?.modifier;
-
-  if (type === "depart") return "Pornește" + street;
-  if (type === "arrive") return "Ai ajuns la destinație";
-  if (modifier === "left") return "Virează  la stânga" + street;
-  if (modifier === "right") return "Virează la dreapta" + street;
-  if (modifier === "straight") return "Continuă înainte" + street;
-  if (modifier === "uturn") return "Întoarce-te" + street;
-  return "Continuă" + street;
-}
-
-function routeSymbol(step: { maneuver?: { type?: string; modifier?: string } }) {
-  if (step.maneuver?.type === "depart") return "↑";
-  if (step.maneuver?.type === "arrive") return "●";
-  if (step.maneuver?.modifier === "left") return "←";
-  if (step.maneuver?.modifier === "right") return "→";
-  return "↑";
-}
-
-function markerIcon(color: string) {
-  return L.divIcon({
-    className: "map-marker",
-    html: '<span class="map-marker__pin" style="background:' + color + '"></span>',
-    iconSize: [28, 38],
-    iconAnchor: [14, 38],
-    popupAnchor: [0, -34],
-  });
-}
-
-function pointIcon(kind: "search" | "start" | "end") {
-  return L.divIcon({
-    className: "map-route-marker",
-    html: '<span class="map-route-marker__dot map-route-marker__dot--' + kind + '"></span>',
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -14],
-  });
-}
-
-function directionIcon(index: number) {
-  return L.divIcon({
-    className: "map-direction-marker",
-    html: '<span class="map-direction-marker__number"><b>' + (index + 1) + "</b></span>",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  });
-}
-
-function accessibleParkingIcon() {
-  return L.divIcon({
-    className: "map-parking-marker",
-    html: '<span class="map-parking-marker__pin" aria-label="Parcare accesibilă"><b>P</b></span>',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -18],
-  });
-}
-
-function ViewController({
-  target,
-  route,
-}: {
-  target: Position | null;
-  route: RouteInfo | null;
-}) {
-  const map = useMap();
-
-  useEffect(() => {
-    map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
-    const observer = new ResizeObserver(() => map.invalidateSize());
-    observer.observe(map.getContainer());
-    return () => observer.disconnect();
-  }, [map]);
-
-  useEffect(() => {
-    if (target) {
-      map.flyTo(target, 16, { animate: true, duration: 0.7 });
-    }
-  }, [map, target]);
-
-  useEffect(() => {
-    if (route && route.coordinates.length > 1) {
-      map.fitBounds(L.latLngBounds(route.coordinates), {
-        animate: true,
-        paddingTopLeft: [420, 70],
-        paddingBottomRight: [50, 70],
-      });
-    }
-  }, [map, route]);
-
-  return null;
-}
-
-async function searchLocations(query: string, signal: AbortSignal): Promise<LocationOption[]> {
-  const response = await fetch(
-    "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=md&accept-language=ro&q=" +
-      encodeURIComponent(query),
-    { signal, headers: { Accept: "application/json" } },
-  );
-  if (!response.ok) throw new Error("search_failed");
-
-  const data: Array<{ lat: string; lon: string; display_name: string }> = await response.json();
-  return data.map((item) => ({
-    position: [Number(item.lat), Number(item.lon)],
-    label: item.display_name,
-  }));
-}
-
-function MapSearch({
-  onSelect,
-  onDirections,
-  onPlaces,
-  onDirectionsHover,
-  onPlacesHover,
-  onControlLeave,
-  routeButtonRef,
-  routeOpen,
-}: {
-  onSelect: (location: LocationOption) => void;
-  onDirections: () => void;
-  onPlaces: () => void;
-  onDirectionsHover: () => void;
-  onPlacesHover: () => void;
-  onControlLeave: () => void;
-  routeButtonRef: RefObject<HTMLButtonElement | null>;
-  routeOpen: boolean;
-}) {
-  const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!query.trim()) return;
-
-    const controller = new AbortController();
-    setLoading(true);
-    try {
-      const [location] = await searchLocations(query.trim(), controller.signal);
-      if (location) {
-        onSelect(location);
-      }
-    } finally {
-      setLoading(false);
-    }
+const pointReportTarget = (
+  position: Position,
+  location?: Pick<LocationOption, "label" | "detail">,
+): ReportTarget => {
+  const coordinates = `${position[0].toFixed(5)}, ${position[1].toFixed(5)}`;
+  return {
+    id: `map-point:${coordinates}`,
+    name: location?.label ?? "Punct selectat pe hartă",
+    address: location?.detail ?? "Loc selectat direct pe hartă",
+    position,
   };
+};
 
-  return (
-    <div className="map-search-row">
-      <form className="map-search" onSubmit={submit}>
-        <label className="map-search__field">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Caută o locație"
-            aria-label="Caută o locație"
-          />
-        </label>
-        <button className="map-search__button" type="submit" disabled={loading} aria-label="Caută locația" title="Caută locația">
-          <Search size={20} aria-hidden="true" />
-        </button>
-        <button
-          ref={routeButtonRef}
-          className="map-search__directions"
-          type="button"
-          onClick={onDirections}
-          onMouseEnter={onDirectionsHover}
-          onMouseLeave={() => undefined}
-          aria-expanded={routeOpen}
-          aria-controls="map-route"
-          title="Direcții"
-          aria-label="Deschide direcțiile"
-        >
-          <Route size={20} aria-hidden="true" />
-        </button>
-      </form>
-      <button
-        className="map-locations-button"
-        type="button"
-        onClick={onPlaces}
-        onMouseEnter={onPlacesHover}
-        onMouseLeave={onControlLeave}
-        title="Locații"
-        aria-label="Filtrează locațiile"
-      >
-        <MapPinned size={18} aria-hidden="true" />
-        <span>Locații</span>
-      </button>
-    </div>
+const isDocumented = (value: string) =>
+  Boolean(value.trim()) && !/neconfirmat|necunoscut/i.test(value);
+
+const accessibilityDetails = (point: AccessibilityPoint) =>
+  [
+    isDocumented(point.surface) ? `Suprafață: ${point.surface.toLowerCase()}` : "",
+    isDocumented(point.kerb) ? `Bordură: ${point.kerb.toLowerCase()}` : "",
+    isDocumented(point.tactilePaving)
+      ? `Pavaj tactil: ${point.tactilePaving.toLowerCase()}`
+      : "",
+  ].filter(Boolean).join(" · ");
+
+const accessibilityAccessDetails = (point: AccessibilityPoint) =>
+  [
+    isDocumented(point.wheelchair)
+      ? `Acces rulant: ${point.wheelchair.toLowerCase()}`
+      : "",
+    isDocumented(point.width) ? `Lățime: ${point.width.toLowerCase()}` : "",
+  ].filter(Boolean).join(" · ");
+
+const distanceBetweenPositions = (a: Position, b: Position) => {
+  const earthRadius = 6_371_000;
+  const latitudeA = (a[0] * Math.PI) / 180;
+  const latitudeB = (b[0] * Math.PI) / 180;
+  const deltaLatitude = ((b[0] - a[0]) * Math.PI) / 180;
+  const deltaLongitude = ((b[1] - a[1]) * Math.PI) / 180;
+  const haversine =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(latitudeA) * Math.cos(latitudeB) * Math.sin(deltaLongitude / 2) ** 2;
+  return 2 * earthRadius * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
+
+const distanceFromRoute = (position: Position, route: Position[]) => {
+  const latitudeScale = Math.cos((position[0] * Math.PI) / 180);
+  const metersPerDegree = 111_320;
+  return Math.min(
+    ...route.slice(1).map((to, index) => {
+      const from = route[index];
+      const ax = from[1] * latitudeScale;
+      const ay = from[0];
+      const bx = to[1] * latitudeScale;
+      const by = to[0];
+      const px = position[1] * latitudeScale;
+      const py = position[0];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const denominator = dx * dx + dy * dy;
+      const ratio = denominator
+        ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denominator))
+        : 0;
+      return Math.hypot(
+        px - (ax + ratio * dx),
+        py - (ay + ratio * dy),
+      ) * metersPerDegree;
+    }),
   );
-}
+};
 
-function AccessibleParkingMarkers({ visible }: { visible: boolean }) {
-  const [parkings, setParkings] = useState<AccessibleParking[]>([]);
-
-  useEffect(() => {
-    if (!visible || parkings.length) return;
-
-    const controller = new AbortController();
-    fetch(
-      "https://overpass-api.de/api/interpreter?data=" +
-        encodeURIComponent(ACCESSIBLE_PARKING_QUERY),
-      { signal: controller.signal },
-    )
-      .then((response) => {
-        if (!response.ok) throw new Error("parking_fetch_failed");
-        return response.json();
-      })
-      .then((data: {
-        elements?: Array<{
-          id: number;
-          lat?: number;
-          lon?: number;
-          center?: { lat: number; lon: number };
-          tags?: Record<string, string>;
-        }>;
-      }) => {
-        const nextParkings: AccessibleParking[] = [];
-        (data.elements ?? []).forEach((element) => {
-          const lat = element.lat ?? element.center?.lat;
-          const lng = element.lon ?? element.center?.lon;
-          if (lat === undefined || lng === undefined) return;
-          nextParkings.push({
-            id: element.id,
-            position: [lat, lng],
-            name: element.tags?.name ?? "Parcare accesibilă",
-            capacity: element.tags?.["capacity:disabled"],
-          });
-        });
-        setParkings(nextParkings);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setParkings([]);
-      });
-
-    return () => controller.abort();
-  }, [parkings.length, visible]);
-
-  if (!visible) return null;
-
-  return (
-    <>
-      {parkings.map((parking) => (
-        <Marker key={parking.id} position={parking.position} icon={accessibleParkingIcon()}>
-          <Popup className="map-popup">
-            <article>
-              <p className="map-popup__status" style={{ color: "#1760bd" }}>
-                Parcare accesibilă
-              </p>
-              <h3>{parking.name}</h3>
-              <p>
-                {parking.capacity
-                  ? "Locuri rezervate: " + parking.capacity
-                  : "Parcare pentru persoane cu dizabilități, marcată în OpenStreetMap."}
-              </p>
-            </article>
-          </Popup>
-        </Marker>
-      ))}
-    </>
-  );
-}
-
-function RouteLocationField({
-  id,
-  label,
-  kind,
-  selected,
-  onSelect,
-  onClear,
-}: {
-  id: string;
-  label: string;
-  kind: "start" | "end";
-  selected: LocationOption | null;
-  onSelect: (location: LocationOption) => void;
-  onClear: () => void;
-}) {
-  const [query, setQuery] = useState(selected?.label ?? "");
-  const [options, setOptions] = useState<LocationOption[]>([]);
-  const [open, setOpen] = useState(false);
-  const [hasTyped, setHasTyped] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!selected) return;
-    setQuery(selected.label);
-    setHasTyped(false);
-    setOpen(false);
-  }, [selected]);
-
-  useEffect(() => {
-    if (!open || !hasTyped) return;
-    const normalized = query.trim().toLocaleLowerCase("ro");
-    const local = places
-      .map(placeToLocation)
-      .filter(
-        (place) =>
-          !normalized ||
-          place.label.toLocaleLowerCase("ro").includes(normalized) ||
-          place.detail?.toLocaleLowerCase("ro").includes(normalized),
-      );
-    setOptions(local);
-    if (normalized.length < 3) {
-      setLoading(false);
-      return;
+const progressAlongRoute = (position: Position, route: Position[]) => {
+  const latitudeScale = Math.cos((position[0] * Math.PI) / 180);
+  const metersPerDegree = 111_320;
+  let travelled = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  let closestProgress = 0;
+  route.slice(1).forEach((to, index) => {
+    const from = route[index];
+    const ax = from[1] * latitudeScale;
+    const ay = from[0];
+    const bx = to[1] * latitudeScale;
+    const by = to[0];
+    const px = position[1] * latitudeScale;
+    const py = position[0];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const denominator = dx * dx + dy * dy;
+    const ratio = denominator
+      ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / denominator))
+      : 0;
+    const segmentLength = Math.hypot(dx, dy) * metersPerDegree;
+    const distance = Math.hypot(
+      px - (ax + ratio * dx),
+      py - (ay + ratio * dy),
+    ) * metersPerDegree;
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestProgress = travelled + segmentLength * ratio;
     }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setLoading(true);
-      try {
-        const remote = await searchLocations(query, controller.signal);
-        const combined = [...local, ...remote].filter(
-          (option, index, all) =>
-            all.findIndex(
-              (candidate) =>
-                candidate.label === option.label &&
-                candidate.position[0] === option.position[0] &&
-                candidate.position[1] === option.position[1],
-            ) === index,
-        );
-        setOptions(combined);
-      } catch {
-        if (!controller.signal.aborted) setOptions(local);
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    }, 280);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [hasTyped, open, query]);
-
-  return (
-    <div className="map-route-field" onMouseLeave={() => setOpen(false)}>
-      <label htmlFor={id}>{label}</label>
-      <div className="map-route-field__input">
-        <i className={"map-route-field__dot map-route-field__dot--" + kind} aria-hidden="true" />
-        <input
-          id={id}
-          value={query}
-          autoComplete="off"
-          placeholder={kind === "start" ? "Alege punctul de plecare" : "Alege destinația"}
-          onFocus={() => {
-            if (hasTyped) setOpen(true);
-          }}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setHasTyped(true);
-            onClear();
-            setOpen(true);
-          }}
-        />
-        {query ? (
-          <button
-            className="map-route-field__clear"
-            type="button"
-            aria-label={"Șterge " + label.toLocaleLowerCase("ro")}
-            onClick={() => {
-              setQuery("");
-              setHasTyped(false);
-              onClear();
-              setOpen(false);
-            }}
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
-      {open ? (
-        <div className="map-route-suggestions" role="listbox" aria-label={label}>
-          {options.map((option) => (
-            <button
-              key={option.label + option.position.join("-")}
-              type="button"
-              role="option"
-              aria-selected={option.label === selected?.label}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                onSelect(option);
-                setQuery(option.label);
-                setHasTyped(false);
-                setOpen(false);
-              }}
-            >
-              <MapPinned size={17} aria-hidden="true" />
-              <span>
-                <strong>{option.label}</strong>
-                {option.detail ? <small>{option.detail}</small> : null}
-              </span>
-            </button>
-          ))}
-          {loading ? <p>Se caută locații…</p> : null}
-          {!loading && options.length === 0 ? <p>Nu am găsit locații.</p> : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-const formatDistance = (distance: number) =>
-  distance >= 1000
-    ? (distance / 1000).toLocaleString("ro-MD", {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-      }) + " km"
-    : Math.round(distance) + " m";
-
-const formatMinutes = (minutes: number, approximate = false) => {
-  const totalMinutes = Math.max(1, Math.round(minutes));
-  const hours = Math.floor(totalMinutes / 60);
-  const remainingMinutes = totalMinutes % 60;
-  const hourLabel = hours === 1 ? "oră" : "ore";
-  const label = hours
-    ? hours + " " + hourLabel + (remainingMinutes ? " și " + remainingMinutes + " min" : "")
-    : remainingMinutes + " min";
-
-  return (approximate ? "~" : "") + label;
+    travelled += segmentLength;
+  });
+  return closestProgress;
 };
 
-const formatDuration = (duration: number) => formatMinutes(duration / 60);
-
-const estimatedRouteDuration = (distance: number, drivingDuration: number, mode: TravelMode) => {
-  if (mode === "wheelchair") {
-    // Average outdoor wheelchair speed: 3.3 km/h, including safer crossings.
-    return formatMinutes(Math.max(1, Math.ceil(distance / 55)), true);
-  }
-
-  if (mode === "transit") {
-    // Includes walking to a stop and a typical wait. Exact line times need an official feed.
-    return formatMinutes(Math.max(8, Math.ceil(distance / 180) + 7), true);
-  }
-
-  return formatDuration(drivingDuration);
+const reportObstacleKinds: Record<MockReportType, string> = {
+  BLOCKED_RAMP: "Rampă blocată",
+  DAMAGED_SIDEWALK: "Trotuar deteriorat",
+  BROKEN_ELEVATOR: "Lift indisponibil",
+  WRONG_INFORMATION: "Informație de acces incorectă",
+  OTHER: "Obstacol raportat",
 };
+
+const reportObstacleScores: Record<MockReportType, number> = {
+  BLOCKED_RAMP: 25,
+  DAMAGED_SIDEWALK: 45,
+  BROKEN_ELEVATOR: 30,
+  WRONG_INFORMATION: 65,
+  OTHER: 50,
+};
+
+const mapDefaultCenter: Position = [47.0105, 28.8353];
 
 export function Map() {
-  const [activeLayer, setActiveLayer] = useState<BaseLayerKey>("strazi");
-  const [searchResult, setSearchResult] = useState<LocationOption | null>(null);
-  const [focusTarget, setFocusTarget] = useState<Position | null>(null);
-  const [panel, setPanel] = useState<"layers" | "places" | null>(null);
-  const [showPlaces, setShowPlaces] = useState(true);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    placeCategories.map((category) => category.label),
-  );
-  const [routeOpen, setRouteOpen] = useState(false);
-  const [travelMode, setTravelMode] = useState<TravelMode>("wheelchair");
+  const user = useCurrentUser();
+  const search = useSearch({ from: "/map" });
+  const navigate = useNavigate();
+  const placesQuery = usePlaces();
+  const publicReportsQuery = usePublicReports();
+  const places = useMemo(() => placesQuery.data ?? [], [placesQuery.data]);
+  const [panel, setPanel] = useState<
+    "list" | "filters" | "place" | "parking" | "route" | null
+  >(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedParking, setSelectedParking] = useState<ParkingLocation | null>(null);
+  const [searchValue, setSearchValue] = useState<LocationOption | null>(null);
   const [origin, setOrigin] = useState<LocationOption | null>(null);
   const [destination, setDestination] = useState<LocationOption | null>(null);
-  const [route, setRoute] = useState<RouteInfo | null>(null);
-  const [routeMessage, setRouteMessage] = useState("");
-  const [selectedPlace, setSelectedPlace] = useState<MapPlace | null>(null);
-  const [searchResetKey, setSearchResetKey] = useState(0);
-  const [session, setSession] = useState(0);
-  const hoverCloseTimer = useRef<number | null>(null);
-  const layersButton = useRef<HTMLButtonElement>(null);
-  const routeButton = useRef<HTMLButtonElement>(null);
-
-  const resetMap = () => {
-    setActiveLayer("strazi");
-    setSearchResult(null);
-    setFocusTarget(null);
-    setPanel(null);
-    setShowPlaces(true);
-    setSelectedCategories(placeCategories.map((category) => category.label));
-    setRouteOpen(false);
-    setTravelMode("wheelchair");
-    setOrigin(null);
-    setDestination(null);
-    setRoute(null);
-    setRouteMessage("");
-    setSelectedPlace(null);
-    setSearchResetKey((value) => value + 1);
-    setSession((value) => value + 1);
+  const parkingQuery = useQuery({
+    queryKey: ["osm-accessible-parking-v1"],
+    queryFn: ({ signal }) => discoverAccessibleParking(signal),
+    staleTime: 10 * 60 * 1000,
+    enabled: !!destination,
+  });
+  const accessibleParking = parkingQuery.data ?? [];
+  const [target, setTarget] = useState<Position | null>(null);
+  const [profile, setProfile] = useState<AccessibilityProfile>(
+    user?.accessibilityProfile ?? "WHEELCHAIR",
+  );
+  const [travelMode, setTravelMode] = useState<TravelMode>("foot");
+  const [filters, setFilters] = useState<PlaceFilters>({});
+  const [satellite, setSatellite] = useState(false);
+  const [reporting, setReporting] = useState<ReportTarget | null>(null);
+  const [picking, setPicking] = useState<
+    "origin" | "destination" | "report" | null
+  >(null);
+  const [routeId, setRouteId] = useState<string | null>(null);
+  const [recenterVersion, setRecenterVersion] = useState<number | null>(null);
+  const [message, setMessage] = useState("");
+  const [livePosition, setLivePosition] = useState<Position | null>(null);
+  const [locationState, setLocationState] = useState<
+    "idle" | "loading" | "active" | "error"
+  >("idle");
+  const pointLookup = useRef<AbortController | null>(null);
+  const pointLookupVersion = useRef(0);
+  const [selectedAccessibilityPoint, setSelectedAccessibilityPoint] =
+    useState<AccessibilityPoint | null>(null);
+  const [editingAccessibilityPoint, setEditingAccessibilityPoint] =
+    useState<AccessibilityPoint | null>(null);
+  const focusAccessibilityPoint = (point: AccessibilityPoint) => {
+    setSelectedAccessibilityPoint(point);
+    setTarget(point.position);
   };
-
-  const clearHoverClose = () => {
-    if (hoverCloseTimer.current !== null) {
-      window.clearTimeout(hoverCloseTimer.current);
-      hoverCloseTimer.current = null;
-    }
-  };
-
-  const scheduleHoverClose = () => {
-    clearHoverClose();
-    hoverCloseTimer.current = window.setTimeout(() => {
-      setPanel(null);
-      setRouteOpen(false);
-      hoverCloseTimer.current = null;
-    }, 220);
-  };
-
-  const openOnHover = (next: "layers" | "places" | "route") => {
-    clearHoverClose();
-    setPanel(next === "route" ? null : next);
-    setRouteOpen(next === "route");
-  };
-
-  useEffect(() => {
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) resetMap();
+  const selected = places.find((place) => place.id === selectedId);
+  const filtered = useMemo(
+    () => filterPlaces(places, filters),
+    [places, filters],
+  );
+  const mapPlaces = useMemo(() => {
+    const categoryPriority: Record<string, number> = {
+      Spital: 1,
+      Farmacie: 2,
+      "Instituție publică": 3,
+      Universitate: 4,
+      Școală: 5,
+      Transport: 6,
+      "Centru comercial": 7,
+      Parc: 8,
+      Muzeu: 9,
+      Catedrală: 10,
+      Aeroport: 11,
+      "Clădire istorică": 12,
     };
-    window.addEventListener("pageshow", onPageShow);
-    return () => window.removeEventListener("pageshow", onPageShow);
-  }, []);
-
-  useEffect(() => () => clearHoverClose(), []);
-
+    return filtered
+      .filter((place) => {
+        const assessment = evaluateAccessibility(place.accessibility);
+        return categoryPriority[place.category] !== undefined && assessment.known > 0;
+      })
+      .sort((a, b) => {
+        const categoryOrder =
+          (categoryPriority[a.category] ?? 99) - (categoryPriority[b.category] ?? 99);
+        if (categoryOrder !== 0) return categoryOrder;
+        return a.name.localeCompare(b.name, "ro");
+      })
+      .slice(0, 90);
+  }, [filtered]);
+  const routesQuery = useQuery({
+    queryKey: [
+      "routes",
+      origin?.position,
+      destination?.position,
+      profile,
+      travelMode,
+    ],
+    queryFn: ({ signal }) =>
+      getRoutes(
+        origin!.position,
+        destination!.position,
+        profile,
+        signal,
+        travelMode,
+      ),
+    enabled: !!origin && !!destination,
+  });
+  const selectedRoute = routesQuery.data?.routes.find(
+    (route) => route.id === (routeId ?? routesQuery.data.recommendedId),
+  );
+  const routeCoordinates =
+    selectedRoute && !selectedRoute.blocked ? selectedRoute.coordinates : null;
+  const routeGuidance = useMemo(
+    () =>
+      selectedRoute && !selectedRoute.blocked
+        ? buildRouteGuidance(selectedRoute)
+        : [],
+    [selectedRoute],
+  );
+  const routeRoads = useMemo<RouteRoadName[]>(
+    () =>
+      selectedRoute?.segments.flatMap((segment) => {
+        const name = segment.roadName ?? segment.fromRoadName;
+        return name && segment.position ? [{ name, position: segment.position }] : [];
+      }) ?? [],
+    [selectedRoute],
+  );
+  const panelAnimationKey =
+    panel === "route"
+      ? `route-${origin?.placeId ?? origin?.label ?? "empty"}-${destination?.placeId ?? destination?.label ?? "empty"}-${selectedRoute?.id ?? "pending"}`
+      : panel;
+  const routeAccessibilityQuery = useQuery({
+    queryKey: [
+      "route-accessibility-obstacles-v4",
+      selectedRoute?.id,
+      origin?.position,
+      destination?.position,
+    ],
+    queryFn: ({ signal }) =>
+      getRouteAccessibility(selectedRoute!.coordinates, signal, routeRoads),
+    enabled: !!selectedRoute && !selectedRoute.blocked,
+    staleTime: 10 * 60 * 1000,
+  });
+  const approvedReportPoints = useMemo<AccessibilityPoint[]>(
+    () =>
+      (publicReportsQuery.data ?? []).flatMap((report) => {
+        if (!report.position) return [];
+        const score = reportObstacleScores[report.type];
+        return [{
+          id: `report-${report.id}`,
+          position: report.position,
+          kind: reportObstacleKinds[report.type],
+          osmType: `community-report:${report.type}`,
+          streetName: report.placeName,
+          score,
+          status: score >= 70 ? "limited" : "problem",
+          surface: "",
+          kerb: "",
+          tactilePaving: "",
+          wheelchair:
+            report.type === "BLOCKED_RAMP" || report.type === "BROKEN_ELEVATOR"
+              ? "Acces blocat"
+              : "",
+          width: "",
+          photoUrl: report.photoUrl,
+          notes: [
+            report.description,
+            `Raport aprobat: ${reportTypeLabels[report.type]}.`,
+          ],
+        } satisfies AccessibilityPoint];
+      }),
+    [publicReportsQuery.data],
+  );
+  const routeReportedPoints = routeCoordinates
+    ? approvedReportPoints.filter(
+        (report) =>
+          distanceFromRoute(report.position, routeCoordinates) <=
+          ROUTE_OBSTACLE_CORRIDOR_METERS,
+      )
+    : [];
+  const accessibilityPoints = applyObstacleOverrides([
+    ...routeReportedPoints,
+    ...(routeAccessibilityQuery.data ?? []),
+  ])
+    .filter((point) => point.status !== "good")
+    .sort(
+      (a, b) =>
+        (routeCoordinates ? progressAlongRoute(a.position, routeCoordinates) : 0) -
+        (routeCoordinates ? progressAlongRoute(b.position, routeCoordinates) : 0),
+    );
+  const routeWarningPoints = accessibilityPoints;
+  const destinationParking = useMemo(
+    () =>
+      routeCoordinates && destination
+        ? accessibleParking.filter(
+            (parking) =>
+              parking.accessible === true &&
+              distanceBetweenPositions(parking.position, destination.position) <= 10,
+          )
+        : [],
+    [accessibleParking, destination, routeCoordinates],
+  );
+  const assessment = selected
+    ? evaluateAccessibility(selected.accessibility)
+    : null;
+  const filterCount =
+    (filters.category ? 1 : 0) +
+    (filters.status ? 1 : 0) +
+    (filters.minScore ? 1 : 0) +
+    (filters.facilities?.length ?? 0) +
+    (filters.verifiedOnly ? 1 : 0);
   useEffect(() => {
-    if (!origin || !destination) {
-      setRoute(null);
+    setProfile(user?.accessibilityProfile ?? "WHEELCHAIR");
+  }, [user?.accessibilityProfile]);
+  useEffect(() => {
+    return () => {
+      pointLookup.current?.abort();
+    };
+  }, []);
+  useEffect(() => {
+    setRouteId(null);
+    setSelectedAccessibilityPoint(null);
+  }, [origin, destination, profile, travelMode]);
+  useEffect(() => {
+    if (!search.place || !placesQuery.data) return;
+    const place = placesQuery.data.find((item) => item.id === search.place);
+    if (place) {
+      setSelectedId(place.id);
+      setTarget(place.position);
+      setPanel("place");
+    } else setMessage("Această locație nu mai este disponibilă.");
+  }, [search.place, placesQuery.data]);
+  useEffect(() => {
+    if (search.lat === undefined || search.lng === undefined) return;
+    setTarget([search.lat, search.lng]);
+    setSelectedId(null);
+    setSelectedParking(null);
+    setPanel(null);
+  }, [search.lat, search.lng]);
+  useEffect(() => {
+    if (
+      !user ||
+      search.reportLat === undefined ||
+      search.reportLng === undefined
+    ) {
       return;
     }
-
-    const controller = new AbortController();
-    setRouteMessage("Se calculează traseul…");
-    const endpoint =
-      "https://router.project-osrm.org/route/v1/driving/" +
-      origin.position[1] +
-      "," +
-      origin.position[0] +
-      ";" +
-      destination.position[1] +
-      "," +
-      destination.position[0] +
-      "?overview=full&geometries=geojson&steps=true";
-
-    fetch(endpoint, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("route_failed");
-        return response.json();
-      })
-      .then((data: {
-        routes?: Array<{
-          distance: number;
-          duration: number;
-          geometry: { coordinates: [number, number][] };
-          legs?: Array<{
-            steps?: Array<{
-              distance: number;
-              name?: string;
-              maneuver?: {
-                type?: string;
-                modifier?: string;
-                location?: [number, number];
-              };
-            }>;
-          }>;
-        }>;
-      }) => {
-        const result = data.routes?.[0];
-        if (!result) throw new Error("route_not_found");
-        setRoute({
-          coordinates: result.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
-          distance: result.distance,
-          duration: result.duration,
-          directions: (result.legs?.[0]?.steps ?? [])
-            .filter(
-              (step) =>
-                step.distance > 0 &&
-                step.maneuver?.location &&
-                step.maneuver.type !== "depart" &&
-                step.maneuver.type !== "arrive",
-            )
-            .map((step) => {
-              const location = step.maneuver?.location as [number, number];
-              return {
-                instruction: routeInstruction(step),
-                distance: step.distance,
-                position: [location[1], location[0]] as Position,
-                symbol: routeSymbol(step),
-              };
-            }),
-        });
-        setRouteMessage("");
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setRoute(null);
-          setRouteMessage("Traseul nu a putut fi calculat. Încearcă alte locații.");
-        }
-      });
-
-    return () => controller.abort();
-  }, [origin, destination]);
-
-  const closeOpenPanel = () => {
-    clearHoverClose();
-    if (panel === "layers") layersButton.current?.focus();
-    if (routeOpen) {
-      routeButton.current?.focus();
-      setSearchResult(null);
-      setFocusTarget(null);
-      setOrigin(null);
-      setDestination(null);
-      setRoute(null);
-      setRouteMessage("");
-      setSelectedPlace(null);
-      setSearchResetKey((value) => value + 1);
-    }
+    const position: Position = [search.reportLat, search.reportLng];
+    const fallbackTarget = pointReportTarget(position);
+    setTarget(position);
+    setSelectedId(null);
+    setSelectedParking(null);
     setPanel(null);
-    setRouteOpen(false);
+    setReporting({
+      id: search.reportTargetId ?? fallbackTarget.id,
+      name: search.reportName ?? fallbackTarget.name,
+      address: search.reportAddress ?? fallbackTarget.address,
+      position,
+    });
+  }, [
+    search.reportAddress,
+    search.reportLat,
+    search.reportLng,
+    search.reportName,
+    search.reportTargetId,
+    placesQuery.data,
+    user,
+  ]);
+  useEffect(() => {
+    if (!placesQuery.data) return;
+    const sync = (location: LocationOption | null) => {
+      if (!location?.placeId) return location;
+      const place = placesQuery.data.find(
+        (item) => item.id === location.placeId,
+      );
+      if (!place) return null;
+      return place.name === location.label &&
+        place.position[0] === location.position[0] &&
+        place.position[1] === location.position[1]
+        ? location
+        : asLocation(place);
+    };
+    setOrigin(sync);
+    setDestination(sync);
+    setSearchValue(sync);
+  }, [placesQuery.data]);
+  const reset = () => {
+    setPanel(null);
+    setSelectedId(null);
+    setSelectedParking(null);
+    setSearchValue(null);
+    setOrigin(null);
+    setDestination(null);
+    setRouteId(null);
+    setPicking(null);
+    setMessage("");
+    if (search.place || search.lat !== undefined || search.lng !== undefined)
+      void navigate({ to: "/map", search: {}, replace: true });
   };
+  const showPlace = (id: string) => {
+    const place = places.find((p) => p.id === id);
+    if (place) {
+      setSelectedId(id);
+      setSelectedParking(null);
+      setTarget([...place.position]);
+      setPanel("place");
+      setPicking(null);
+    }
+  };
+  const startRoute = (location: LocationOption) => {
+    setDestination(location);
+    setSelectedId(location.placeId ?? null);
+    setSelectedParking(null);
+    setTarget([...location.position]);
+    setPanel("route");
+    setPicking(null);
+  };
+  const showParking = (parking: ParkingLocation) => {
+    setSelectedParking(parking);
+    setSelectedId(null);
+    setTarget([...parking.position]);
+    setPanel("parking");
+    setPicking(null);
+  };
+  const chooseSearch = (location: LocationOption) => {
+    setSearchValue(location);
+    startRoute(location);
+  };
+  const resolvePickedLocation = async (
+    point: Position,
+    pickedPlace?: MapPlace,
+  ): Promise<LocationOption> => {
+    if (pickedPlace) return asLocation(pickedPlace);
 
-  const currentLayer = layers[activeLayer];
-  const filteredPlaces = places.filter((place) => selectedCategories.includes(place.category));
+    const nearbyPlace = places
+      .map((place) => ({
+        place,
+        distance: distanceBetweenPositions(place.position, point),
+      }))
+      .filter(({ distance }) => distance <= 20)
+      .sort((a, b) => a.distance - b.distance)[0]?.place;
+    if (nearbyPlace) return asLocation(nearbyPlace);
 
-  const toggleCategory = (category: string) => {
-    setSelectedCategories((current) =>
-      current.includes(category)
-        ? current.filter((item) => item !== category)
-        : [...current, category],
+    pointLookup.current?.abort();
+    const controller = new AbortController();
+    pointLookup.current = controller;
+    return reverseGeocodeMapPosition(point, controller.signal);
+  };
+  const pickPointOnMap = async (point: Position, pickedPlace?: MapPlace) => {
+    const mode = picking;
+    if (!mode) return;
+    const lookupVersion = ++pointLookupVersion.current;
+    setMessage("Se identifică locul ales…");
+
+    let location: LocationOption;
+    try {
+      location = await resolvePickedLocation(point, pickedPlace);
+    } catch {
+      location = {
+        label: "Punct selectat pe hartă",
+        detail: "Adresă indisponibilă momentan",
+        position: point,
+      };
+    }
+    if (lookupVersion !== pointLookupVersion.current) return;
+
+    if (mode === "origin") setOrigin(location);
+    else if (mode === "destination") setDestination(location);
+    else {
+      setTarget(point);
+      setSelectedId(null);
+      setSelectedParking(null);
+      setPanel(null);
+      setReporting(
+        pickedPlace
+          ? asReportTarget(pickedPlace)
+          : pointReportTarget(point, location),
+      );
+    }
+    setMessage("");
+    setPicking(null);
+    if (mode !== "report") setPanel("route");
+  };
+  const recenterMap = () => {
+    setTarget(null);
+    setRecenterVersion((version) => (version ?? 0) + 1);
+    setMessage("Harta a fost recentrată.");
+  };
+  const requestLiveLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationState("error");
+      setMessage("Browserul nu oferă acces la locația live.");
+      return;
+    }
+    if (locationState === "loading") return;
+    setLocationState("loading");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const position: Position = [coords.latitude, coords.longitude];
+        setLivePosition(position);
+        setOrigin({ label: "Locația mea live", position });
+        setTarget(position);
+        setLocationState("active");
+        setMessage("Locația live a fost aleasă ca punct de plecare.");
+      },
+      () => {
+        setLocationState("error");
+        setMessage("Nu am putut obține locația live. Permite accesul și încearcă din nou.");
+      },
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 15_000 },
     );
   };
-
+  const updateFilter = <K extends keyof PlaceFilters>(
+    key: K,
+    value: PlaceFilters[K],
+  ) => setFilters((previous) => ({ ...previous, [key]: value }));
+  const closeReport = () => {
+    setReporting(null);
+    if (routeCoordinates) setPanel("route");
+    if (search.reportLat !== undefined || search.reportLng !== undefined) {
+      void navigate({
+        to: "/map",
+        search: {
+          place: search.place,
+          lat: search.lat,
+          lng: search.lng,
+        },
+        replace: true,
+      });
+    }
+  };
   return (
     <section
-      className="map-workspace"
-      aria-label="Harta Chișinăului"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && (panel || routeOpen)) closeOpenPanel();
-      }}
+      className="map-workspace urban-map"
+      aria-label="Hartă și locații accesibile"
     >
-      <MapContainer
-        key={session}
-        center={DEFAULT_CENTER}
-        zoom={DEFAULT_ZOOM}
-        scrollWheelZoom
-        zoomControl={false}
-        className="map-canvas"
-      >
-        <TileLayer attribution={currentLayer.attribution} url={currentLayer.url} />
-        <ZoomControl position="bottomright" zoomInTitle="Mărește harta" zoomOutTitle="Micșorează harta" />
-        <ViewController target={focusTarget ?? searchResult?.position ?? null} route={route} />
-        {showPlaces
-          ? filteredPlaces.map((place) => (
-              <Marker
-                key={place.id}
-                position={place.position}
-                icon={markerIcon(place.categoryColor)}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedPlace(place);
-                    setFocusTarget(place.position);
-                    setPanel(null);
-                    setRouteOpen(false);
-                  },
-                }}
-              >
-                {selectedPlace?.id === place.id ? null : (
-                  <Popup className="map-popup">
-                    <article>
-                      <p className="map-popup__status" style={{ color: statusMeta[place.status].color }}>
-                        {statusMeta[place.status].label}
-                      </p>
-                      <h3>{place.name}</h3>
-                      <p>{place.address}</p>
-                      <p>{place.note}</p>
-                      <p className="map-popup__score">
-                        Scor accesibilitate: <strong>{scoreFor(place)}/100</strong>
-                      </p>
-                      <dl className="map-popup__features">
-                        {accessibilityFeatures.map((feature) => (
-                          <div key={feature.key}>
-                            <dt>{feature.label}</dt>
-                            <dd
-                              className={
-                                "map-popup__feature-value map-popup__feature-value--" +
-                                place.accessibility[feature.key]
-                              }
-                            >
-                              {accessibilityValueLabel[place.accessibility[feature.key]]}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                    </article>
-                  </Popup>
-                )}
-              </Marker>
-            ))
-          : null}
-        {searchResult ? (
-          <Marker position={searchResult.position} icon={pointIcon("search")}>
-            <Popup className="map-popup">
-              <article>
-                <p className="map-popup__status" style={{ color: "#163b83" }}>
-                  Locație găsită
-                </p>
-                <h3>{searchResult.label}</h3>
-              </article>
-            </Popup>
-          </Marker>
-        ) : null}
-        {route ? (
-          <>
-            <Polyline positions={route.coordinates} pathOptions={{ color: "#fff", weight: 10, opacity: 0.92 }} />
-            <Polyline positions={route.coordinates} pathOptions={{ color: "#163b83", weight: 6, opacity: 0.96 }} />
-            {route.directions.map((direction, index) => (
-              <Marker
-                key={direction.position.join("-") + index}
-                position={direction.position}
-                icon={directionIcon(index)}
-              >
-                <Popup className="map-direction-popup">
-                  <strong>{index + 1}. {direction.instruction}</strong>
-                  <span>{formatDistance(direction.distance)}</span>
-                </Popup>
-              </Marker>
-            ))}
-          </>
-        ) : null}
-        {origin ? <Marker position={origin.position} icon={pointIcon("start")} /> : null}
-        {destination ? <Marker position={destination.position} icon={pointIcon("end")} /> : null}
-        <AccessibleParkingMarkers visible={travelMode === "driving"} />
-      </MapContainer>
-
-      <div className="map-floating-search">
-        <MapSearch
-          key={searchResetKey}
-          onSelect={(location) => {
-            const normalizedLabel = location.label.toLocaleLowerCase("ro");
-            const matchingPlace = places.find((place) => {
-              const normalizedName = place.name.toLocaleLowerCase("ro");
-              return (
-                normalizedLabel.includes(normalizedName) ||
-                normalizedName.includes(normalizedLabel) ||
-                place.aliases?.some((alias) => normalizedLabel.includes(alias))
-              );
-            });
-            const selectedLocation = matchingPlace ? placeToLocation(matchingPlace) : location;
-            setSearchResult(selectedLocation);
-            setFocusTarget(selectedLocation.position);
-            setDestination(selectedLocation);
-            setRouteOpen(true);
-            setPanel(null);
-            setSelectedPlace(matchingPlace ?? null);
-          }}
-          onDirections={() => {
-            clearHoverClose();
-            setRouteOpen(true);
-            setPanel(null);
-          }}
-          onPlaces={() => {
-            clearHoverClose();
-            setPanel((value) => (value === "places" ? null : "places"));
-            setRouteOpen(false);
-          }}
-          onDirectionsHover={() => openOnHover("route")}
-          onPlacesHover={() => openOnHover("places")}
-          onControlLeave={scheduleHoverClose}
-          routeButtonRef={routeButton}
-          routeOpen={routeOpen}
-        />
-      </div>
-
-      <button type="button" className="map-reset-button" onClick={resetMap} title="Resetează harta la Chișinău" aria-label="Resetează harta la Chișinău">
-        <LocateFixed size={22} aria-hidden="true" />
-      </button>
-
-      <button
-        ref={layersButton}
-        type="button"
-        className="map-layers-button"
-        aria-expanded={panel === "layers"}
-        aria-controls="map-layers"
-        onClick={() => {
-          clearHoverClose();
-          setPanel(panel === "layers" ? null : "layers");
-          setRouteOpen(false);
+              <MapCanvas
+        places={routeCoordinates && !picking ? [] : mapPlaces}
+        parking={routeCoordinates && travelMode === "driving" ? destinationParking : []}
+        accessibilityPoints={
+          !picking
+            ? routeCoordinates
+              ? routeWarningPoints
+              : approvedReportPoints
+            : []
+        }
+        onSelect={showPlace}
+        onSelectParking={showParking}
+        onSelectAccessibility={focusAccessibilityPoint}
+        target={target}
+        route={routeCoordinates}
+        origin={origin?.position ?? null}
+        destination={destination?.position ?? null}
+        userLocation={livePosition}
+        travelMode={travelMode}
+        panelOpen={panel !== null}
+        satellite={satellite}
+        recenterPosition={mapDefaultCenter}
+        recenterVersion={recenterVersion}
+        onRecenter={recenterMap}
+        picking={!!picking}
+        onPick={(point, pickedPlace) => {
+          void pickPointOnMap(point, pickedPlace);
         }}
-        onMouseEnter={() => openOnHover("layers")}
-        onMouseLeave={scheduleHoverClose}
-      >
-        <Layers3 size={26} aria-hidden="true" />
-        <span>Straturi</span>
-      </button>
-
-      {routeOpen ? (
-        <section id="map-route" className="map-floating-panel map-floating-panel--route" aria-labelledby="route-title" onMouseEnter={clearHoverClose} onMouseLeave={clearHoverClose}>
-          <div className="map-panel-heading map-route-panel__heading">
-            <p id="route-title" className="map-route-panel__intro">Alege punctul de plecare, destinația și mijlocul de transport.</p>
-            <button type="button" onClick={closeOpenPanel} aria-label="Închide direcțiile"><X size={20} /></button>
-          </div>
-          <div className="map-travel-modes" aria-label="Mod de deplasare">
-            <button
-              type="button"
-              className={travelMode === "wheelchair" ? "is-active" : ""}
-              aria-pressed={travelMode === "wheelchair"}
-              onClick={() => setTravelMode("wheelchair")}
+      />
+      {selectedAccessibilityPoint && (
+        <motion.aside
+          className="map-accessibility-popover"
+          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          aria-label="Detalii de accesibilitate"
+        >
+          <div className="map-accessibility-popover-heading">
+            <div>
+              <span>{selectedAccessibilityPoint.kind}</span>
+              <h3>{selectedAccessibilityPoint.streetName}</h3>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Închide detaliile de accesibilitate"
+              onClick={() => setSelectedAccessibilityPoint(null)}
             >
-              <Accessibility size={18} aria-hidden="true" /> Scaun rulant
-            </button>
-            <button
-              type="button"
-              className={travelMode === "transit" ? "is-active" : ""}
-              aria-pressed={travelMode === "transit"}
-              onClick={() => setTravelMode("transit")}
-            >
-              <Bus size={18} aria-hidden="true" /> Transport
-            </button>
-            <button
-              type="button"
-              className={travelMode === "driving" ? "is-active" : ""}
-              aria-pressed={travelMode === "driving"}
-              onClick={() => setTravelMode("driving")}
-            >
-              <Car size={18} aria-hidden="true" /> Mașină
-            </button>
+              <X />
+            </Button>
           </div>
-          <div className="map-route-fields">
-            <RouteLocationField
-              id="route-origin"
-              label="Plecare"
-              kind="start"
-              selected={origin}
-              onSelect={setOrigin}
-              onClear={() => {
-                setOrigin(null);
-                setRoute(null);
-                setRouteMessage("");
-              }}
-            />
-            <RouteLocationField
-              id="route-destination"
-              label="Destinație"
-              kind="end"
-              selected={destination}
-              onSelect={setDestination}
-              onClear={() => {
-                setDestination(null);
-                setRoute(null);
-                setRouteMessage("");
-              }}
-            />
+          <div className="accessibility-score-line">
+            <strong>
+              {selectedAccessibilityPoint.score === null
+                ? "Date parțiale"
+                : `${selectedAccessibilityPoint.score}/100`}
+            </strong>
+            <span>
+              {selectedAccessibilityPoint.status === "good"
+                ? "Accesibil"
+                : selectedAccessibilityPoint.status === "limited"
+                  ? "Acces parțial"
+                  : selectedAccessibilityPoint.status === "problem"
+                    ? "Acces dificil"
+                    : "Necesită verificare"}
+            </span>
           </div>
-          {route ? (
-            <>
-              <div className="map-route-summary" role="status">
-                <strong>Traseu găsit</strong>
-                <span>{formatDistance(route.distance)}</span>
-                <span>{estimatedRouteDuration(route.distance, route.duration, travelMode)}</span>
-              </div>
-              {travelMode === "transit" ? (
-                <div className="map-transit-guide">
-                  <Bus size={20} aria-hidden="true" />
-                  <div>
-                    <strong>Transport public</strong>
-                    <p>Urmează traseul până la stație, apoi alege un troleibuz sau autobuz spre destinație. Liniile exacte vor apărea după integrarea programului oficial de transport.</p>
-                  </div>
-                </div>
-              ) : null}
-              {travelMode === "driving" ? (
-                <div className="map-parking-guide">
-                  <span aria-hidden="true">P</span>
-                  <p>Marcajele albastre P arată parcările accesibile găsite în OpenStreetMap. Apasă pe un marcaj pentru detalii.</p>
-                </div>
-              ) : null}
-              <section className="map-directions" aria-labelledby="directions-title">
-                <h3 id="directions-title">Direcții</h3>
-                <ol>
-                  <li className="map-directions__start">
-                    <i aria-hidden="true">S</i>
-                    <strong>Start: {origin?.label}</strong>
-                    <span />
-                  </li>
-                  {route.directions.length
-                    ? route.directions.map((direction, index) => (
-                      <li key={index}>
-                        <i aria-hidden="true">{direction.symbol}</i>
-                        <strong>{index + 1}. {direction.instruction}</strong>
-                        <span>{formatDistance(direction.distance)}</span>
-                      </li>
-                    ))
-                    : null}
-                  <li className="map-directions__end">
-                    <i aria-hidden="true">●</i>
-                    <strong>Ai ajuns: {destination?.label}</strong>
-                    <span />
-                  </li>
-                </ol>
-              </section>
-            </>
-          ) : (
-            <p className="map-route-message" role="status">
-              {routeMessage || "Selectează ambele locații pentru a calcula traseul."}
-            </p>
+          <dl className="accessibility-facts">
+            <div><dt>Tip</dt><dd>{selectedAccessibilityPoint.kind}</dd></div>
+            {isDocumented(selectedAccessibilityPoint.surface) && <div><dt>Suprafață</dt><dd>{selectedAccessibilityPoint.surface}</dd></div>}
+            {isDocumented(selectedAccessibilityPoint.kerb) && <div><dt>Bordură</dt><dd>{selectedAccessibilityPoint.kerb}</dd></div>}
+            {isDocumented(selectedAccessibilityPoint.tactilePaving) && <div><dt>Pavaj tactil</dt><dd>{selectedAccessibilityPoint.tactilePaving}</dd></div>}
+            {isDocumented(selectedAccessibilityPoint.wheelchair) && <div><dt>Acces rulant</dt><dd>{selectedAccessibilityPoint.wheelchair}</dd></div>}
+            {isDocumented(selectedAccessibilityPoint.width) && <div><dt>Lățime</dt><dd>{selectedAccessibilityPoint.width}</dd></div>}
+          </dl>
+          <ul className="accessibility-notes">
+            {selectedAccessibilityPoint.notes.map((note) => <li key={note}>{note}</li>)}
+          </ul>
+          {selectedAccessibilityPoint.photoUrl && (
+            <a
+              className="map-accessibility-photo"
+              href={selectedAccessibilityPoint.photoUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src={selectedAccessibilityPoint.photoUrl}
+                alt={`Fotografie pentru ${selectedAccessibilityPoint.kind}`}
+              />
+              <span>Deschide fotografia raportată</span>
+            </a>
           )}
-        </section>
-      ) : null}
-
-      {panel === "layers" ? (
-        <section id="map-layers" className="map-floating-panel map-floating-panel--layers" aria-labelledby="layers-title" onMouseEnter={clearHoverClose} onMouseLeave={scheduleHoverClose}>
+          {user?.role === "ADMIN" && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="edit-accessibility-point"
+              onClick={() => setEditingAccessibilityPoint(selectedAccessibilityPoint)}
+            >
+              <Pencil />
+              Editează detaliile
+            </Button>
+          )}
+        </motion.aside>
+      )}
+      <div className="urban-map-toolbar">
+        <LocationSearch
+          label="Caută locație"
+          placeholder="Caută o locație… "
+          places={places}
+          value={searchValue}
+          onSelect={chooseSearch}
+          onClear={reset}
+        />
+        <Button
+          variant="secondary"
+          size="icon"
+          className={panel === "filters" ? "is-active" : ""}
+          aria-label="Filtre de accesibilitate"
+          aria-pressed={panel === "filters"}
+          onClick={() => setPanel(panel === "filters" ? null : "filters")}
+        >
+          <SlidersHorizontal />
+          {filterCount > 0 && <b className="filter-count">{filterCount}</b>}
+        </Button>
+      </div>
+      <div className="urban-map-tools">
+        <motion.div
+          className="map-tool-motion"
+          whileHover={{ y: -2, scale: 1.06 }}
+          whileTap={{ scale: 0.93 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <Button
+            variant="secondary"
+            size="icon"
+            title="Lista locațiilor"
+            aria-label="Lista locațiilor"
+            aria-pressed={panel === "list"}
+            onClick={() => setPanel(panel === "list" ? null : "list")}
+          >
+            <List />
+          </Button>
+        </motion.div>
+        <motion.div
+          className="map-tool-motion"
+          whileHover={{ y: -2, scale: 1.06 }}
+          whileTap={{ scale: 0.93 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <Button
+            variant="secondary"
+            size="icon"
+            title="Selectează punctul problemei"
+            aria-label="Selectează punctul problemei"
+            onClick={() => {
+              setPicking("report");
+              setPanel(null);
+            }}
+          >
+            <Flag />
+          </Button>
+        </motion.div>
+        <motion.div
+          className="map-tool-motion"
+          whileHover={{ y: -2, scale: 1.06 }}
+          whileTap={{ scale: 0.93 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <Button
+            variant="secondary"
+            size="icon"
+            title="Deschide traseul"
+            aria-label="Deschide traseul"
+            aria-pressed={panel === "route"}
+            onClick={() => setPanel(panel === "route" ? null : "route")}
+          >
+            <Route />
+          </Button>
+        </motion.div>
+        <motion.div
+          className="map-tool-motion"
+          whileHover={{ y: -2, scale: 1.06 }}
+          whileTap={{ scale: 0.93 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <Button
+            variant="secondary"
+            size="icon"
+            title={satellite ? "Hartă stradală" : "Hartă satelit"}
+            aria-label={satellite ? "Hartă stradală" : "Hartă satelit"}
+            aria-pressed={satellite}
+            onClick={() => setSatellite(!satellite)}
+          >
+            <Layers3 />
+          </Button>
+        </motion.div>
+      </div>
+      {picking && (
+        <div className="map-pick-message" role="status">
+          {picking === "origin"
+            ? "Alege punctul de plecare"
+            : picking === "destination"
+              ? "Alege destinația"
+              : "Alege punctul problemei"}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Anulează alegerea punctului"
+            onClick={() => setPicking(null)}
+          >
+            <X />
+          </Button>
+        </div>
+      )}
+      {message && (
+        <div className="map-feedback" role="status">
+          {message}
+          <button onClick={() => setMessage("")} aria-label="Închide mesajul">
+            ×
+          </button>
+        </div>
+      )}
+      {placesQuery.isPending && (
+        <div className="map-feedback" role="status">
+          Se încarcă locațiile…
+        </div>
+      )}
+      {placesQuery.error && (
+        <div className="map-feedback" role="alert">
+          {placesQuery.error.message}
+          <Button onClick={() => void placesQuery.refetch()}>Reîncearcă</Button>
+        </div>
+      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {panel && (
+        <motion.aside
+          key={panelAnimationKey}
+          initial={{ opacity: 0, x: -18 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -12 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          className={`urban-map-panel ${panel === "route" ? "is-route" : ""} ${picking ? "is-picking" : ""}`}
+          aria-label={
+            panel === "route"
+              ? "Planificarea traseului"
+              : panel === "filters"
+                ? "Filtre"
+                : panel === "parking"
+                  ? "Detalii parcare"
+                : "Locații"
+          }
+        >
           <div className="map-panel-heading">
-            <h2 id="layers-title">Tipul hărții</h2>
-            <button type="button" onClick={closeOpenPanel} aria-label="Închide straturile"><X size={20} /></button>
+            <div>
+              <span>
+                {panel === "route"
+                  ? "DE LA A LA B"
+                  : panel === "filters"
+                    ? "PERSONALIZEAZĂ HARTA"
+                    : panel === "parking"
+                      ? "PARCARE PE HARTĂ"
+                    : "CHIȘINĂU, MAI ACCESIBIL"}
+              </span>
+              <h2>
+                {panel === "route"
+                  ? "Planifică traseul"
+                  : panel === "filters"
+                    ? "Accesul de care ai nevoie"
+                    : panel === "list"
+                      ? "Locații pe hartă"
+                      : panel === "parking"
+                        ? "Detalii parcare"
+                      : "Detalii locație"}
+              </h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={
+                panel === "route"
+                  ? "Închide și șterge traseul"
+                  : "Închide panoul"
+              }
+              onClick={
+                panel === "route" || panel === "place" || panel === "parking"
+                  ? reset
+                  : () => setPanel(null)
+              }
+            >
+              <X />
+            </Button>
           </div>
-          <div className="map-layer-options">
-            {(Object.keys(layers) as BaseLayerKey[]).map((key) => {
-              const Icon = key === "strazi" ? MapPinned : Satellite;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className={"map-layer-choice map-layer-choice--" + key}
-                  aria-pressed={activeLayer === key}
-                  title={layers[key].hint}
-                  onClick={() => setActiveLayer(key)}
+          {panel === "filters" && (
+            <div className="map-panel-body">
+              <div className="field">
+                <Label htmlFor="map-category">Categorie</Label>
+                <ChoiceMenu
+                  id="map-category"
+                  value={filters.category ?? ""}
+                  options={[
+                    { value: "", label: "Toate categoriile" },
+                    ...placeCategories.map((c) => ({
+                      value: c.label,
+                      label: c.label,
+                    })),
+                  ]}
+                  onChange={(value) => updateFilter("category", value)}
+                />
+              </div>
+              <div className="field">
+                <Label htmlFor="map-status">Accesibilitate</Label>
+                <ChoiceMenu
+                  id="map-status"
+                  value={filters.status ?? ""}
+                  options={[
+                    { value: "", label: "Toate nivelurile" },
+                    ...Object.entries(statusMeta).map(([value, meta]) => ({
+                      value,
+                      label: meta.label,
+                    })),
+                  ]}
+                  onChange={(value) => updateFilter("status", value)}
+                />
+              </div>
+              <div className="field">
+                <Label htmlFor="map-score">
+                  Scor minim: {filters.minScore ?? 0}/100
+                </Label>
+                <input
+                  id="map-score"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={filters.minScore ?? 0}
+                  onChange={(e) =>
+                    updateFilter("minScore", Number(e.target.value))
+                  }
+                />
+              </div>
+              <fieldset className="map-facility-filters">
+                <legend>Facilități necesare</legend>
+                {accessibilityFeatures.map((feature) => (
+                  <label key={feature.key}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        filters.facilities?.includes(feature.key) ?? false
+                      }
+                      onChange={(e) =>
+                        updateFilter(
+                          "facilities",
+                          e.target.checked
+                            ? [...(filters.facilities ?? []), feature.key]
+                            : (filters.facilities ?? []).filter(
+                                (key) => key !== feature.key,
+                              ),
+                        )
+                      }
+                    />
+                    {feature.label}
+                  </label>
+                ))}
+              </fieldset>
+              <label className="map-check">
+                <input
+                  type="checkbox"
+                  checked={filters.verifiedOnly ?? false}
+                  onChange={(e) =>
+                    updateFilter("verifiedOnly", e.target.checked)
+                  }
+                />
+                Doar informații verificate în teren
+              </label>
+              <div className="filter-result-count" role="status">
+                {filtered.length} locații corespund filtrelor
+              </div>
+              <div className="map-panel-actions">
+                <Button variant="outline" onClick={() => setFilters({})}>
+                  Resetează
+                </Button>
+                <Button
+                  onClick={() => setPanel("list")}
                 >
-                  <Icon size={28} aria-hidden="true" />
-                  <span>{layers[key].label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {panel === "places" ? (
-        <section id="map-places" className="map-floating-panel map-floating-panel--places" aria-labelledby="places-title" onMouseEnter={clearHoverClose} onMouseLeave={scheduleHoverClose}>
-          <div className="map-panel-heading">
-            <div>
-              <h2 id="places-title">Locații</h2>
-              <p>Filtrează punctele de pe hartă după categorie.</p>
+                  Vezi locațiile <ChevronRight />
+                </Button>
+              </div>
             </div>
-            <button type="button" onClick={closeOpenPanel} aria-label="Închide locațiile"><X size={20} /></button>
-          </div>
-          <div className="map-category-list" aria-label="Categorii de locații">
-            {placeCategories.map((category) => {
-              return (
-                <label key={category.label} className="map-category-option">
-                  <input
-                    type="checkbox"
-                    checked={selectedCategories.includes(category.label)}
-                    onChange={() => toggleCategory(category.label)}
-                  />
-                  <i style={{ background: category.color }} aria-hidden="true" />
-                  <span>{category.label}</span>
-                </label>
-              );
-            })}
-          </div>
-          <p className="map-places-count">
-            Pe hartă: <strong>{filteredPlaces.length}</strong> locații
-          </p>
-        </section>
-      ) : null}
-
-      {selectedPlace ? (
-        <section className="map-floating-panel map-floating-panel--place-details" aria-labelledby="place-details-title">
-          <div className="map-panel-heading">
-            <div>
-              <p className="map-place-detail__category" style={{ color: selectedPlace.categoryColor }}>
-                {selectedPlace.category}
+          )}
+          {panel === "list" && (
+            <div className="map-place-list">
+              <p className="map-list-count">
+                {filtered.length} din {places.length} locații{" "}
+                {filterCount ? "· filtre active" : ""}
               </p>
-              <h2 id="place-details-title">{selectedPlace.name}</h2>
-              <p>{selectedPlace.address}</p>
-            </div>
-            <button type="button" onClick={() => setSelectedPlace(null)} aria-label="Închide detaliile locației"><X size={20} /></button>
-          </div>
-          <div className="map-place-detail__summary">
-            <span style={{ background: statusMeta[selectedPlace.status].color }} aria-hidden="true" />
-            <strong>{statusMeta[selectedPlace.status].label}</strong>
-            <b>{scoreFor(selectedPlace)}/100</b>
-          </div>
-          <p className="map-place-detail__note">{selectedPlace.note}</p>
-          <dl className="map-place-detail__meta">
-            <div><dt>Tip</dt><dd>{selectedPlace.category}</dd></div>
-            <div><dt>Coordonate</dt><dd>{selectedPlace.position[0].toFixed(5)}, {selectedPlace.position[1].toFixed(5)}</dd></div>
-          </dl>
-          <h3>Accesibilitate</h3>
-          <dl className="map-place-detail__features">
-            {accessibilityFeatures.map((feature) => {
-              const value = selectedPlace.accessibility[feature.key];
-              return (
-                <div key={feature.key}>
-                  <dt>{feature.label}</dt>
-                  <dd className={"is-" + value}>{accessibilityValueLabel[value]}</dd>
+              {filtered.map((place) => {
+                const score = evaluateAccessibility(place.accessibility);
+                return (
+                  <motion.button
+                    className="map-place-list-item"
+                    key={place.id}
+                    onClick={() => showPlace(place.id)}
+                    whileHover={{ x: 3 }}
+                    whileTap={{ scale: 0.99 }}
+                    transition={{ duration: 0.16 }}
+                  >
+                    <span
+                      className="list-pin"
+                      style={{ color: statusMeta[score.status].color }}
+                    >
+                      <MapPin size={22} />
+                    </span>
+                    <span>
+                      <strong>{place.name}</strong>
+                      <small>
+                        {place.category} · {place.address}
+                      </small>
+                      <StatusBadge status={score.status} />
+                    </span>
+                    <ChevronRight size={16} />
+                  </motion.button>
+                );
+              })}
+              {!filtered.length && (
+                <div className="map-empty">
+                  <MapPin />
+                  <h3>Nicio locație găsită</h3>
+                  <p>Încearcă mai puține filtre pentru a vedea alte locuri.</p>
+                  <Button variant="outline" onClick={() => setFilters({})}>
+                    Resetează filtrele
+                  </Button>
                 </div>
-              );
-            })}
-          </dl>
-        </section>
-      ) : null}
+              )}
+            </div>
+          )}
+          {panel === "parking" && selectedParking && (
+            <div className="map-panel-body parking-detail">
+              <div className="parking-detail-title">
+                <span className="parking-detail-badge">P</span>
+                <div>
+                  <span>{selectedParking.access}</span>
+                  <h3>{selectedParking.name}</h3>
+                </div>
+              </div>
+              <p className="place-detail-address">
+                <MapPin size={15} />
+                {selectedParking.address}
+              </p>
+              <p className="place-description">{selectedParking.note}</p>
+              <div
+                className={`parking-access-status ${selectedParking.accessible ? "is-confirmed" : "is-unknown"}`}
+              >
+                <ShieldCheck size={17} />
+                <span>
+                  {selectedParking.accessible
+                    ? "Locuri rezervate pentru persoane cu dizabilități"
+                    : "Locurile rezervate nu sunt confirmate în datele disponibile"}
+                </span>
+              </div>
+              <div className="parking-info-card">
+                <CarFront size={18} />
+                <span>Poți calcula traseul auto până la această parcare.</span>
+              </div>
+              <div className="map-panel-actions">
+                <Button
+                  onClick={() => {
+                    setTravelMode("driving");
+                    startRoute({
+                      label: selectedParking.name,
+                      position: selectedParking.position,
+                    });
+                  }}
+                >
+                  <Route />
+                  Calculează traseu
+                </Button>
+              </div>
+            </div>
+          )}
+          {panel === "place" && selected && assessment && (
+            <div className="map-panel-body">
+              <div className="place-detail-title">
+                <span>{selected.category}</span>
+                <h3>{selected.name}</h3>
+                <p>
+                  <MapPin size={15} />
+                  {selected.address}
+                </p>
+              </div>
+              <div className="place-score-card">
+                <div>
+                  <small>Scor de accesibilitate</small>
+                  <strong>
+                    {assessment.known ? assessment.score : "—"}
+                    <span>/100</span>
+                  </strong>
+                </div>
+                <StatusBadge status={assessment.status} />
+              </div>
+              <p className="place-description">{selected.note}</p>
+              {(selected.openingHours || selected.phone || selected.website) && (
+                <div className="place-public-details">
+                  {selected.openingHours && (
+                    <div>
+                      <span>Program</span>
+                      <strong>{selected.openingHours}</strong>
+                    </div>
+                  )}
+                  {selected.phone && (
+                    <div>
+                      <span>Telefon</span>
+                      <a href={`tel:${selected.phone}`}>{selected.phone}</a>
+                    </div>
+                  )}
+                  {selected.website && (
+                    <div>
+                      <span>Site oficial</span>
+                      <a href={selected.website} target="_blank" rel="noreferrer">
+                        Deschide site-ul
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+              {accessibilityFeatures.some(
+                (feature) => selected.accessibility[feature.key] !== "necunoscut",
+              ) && (
+              <div className="place-facilities">
+                {accessibilityFeatures
+                  .filter(
+                    (feature) => selected.accessibility[feature.key] !== "necunoscut",
+                  )
+                  .map((feature) => (
+                  <div key={feature.key}>
+                    <span>{feature.label}</span>
+                    <b
+                      className={`facility-value value-${selected.accessibility[feature.key]}`}
+                    >
+                      {selected.accessibility[feature.key] === "da" && (
+                        <Check size={12} />
+                      )}
+                      {
+                        accessibilityValueLabel[
+                          selected.accessibility[feature.key]
+                        ]
+                      }
+                    </b>
+                  </div>
+                ))}
+              </div>
+              )}
+              <p className="place-source">
+                <ShieldCheck size={15} />
+                {sourceLabels[selected.source]} ·{" "}
+                {selected.verified
+                  ? "Adresă și poziție confirmate"
+                  : "Date adăugate de comunitate"}
+                <small>
+                  Actualizat:{" "}
+                  {new Date(selected.updatedAt).toLocaleDateString("ro-RO")} ·{" "}
+                  {assessment.known}/7 facilități documentate public
+                </small>
+              </p>
+              <div className="map-panel-actions">
+                <Button
+                  onClick={() => {
+                    startRoute(asLocation(selected));
+                  }}
+                >
+                  <Route />
+                  Setează destinația
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReporting(asReportTarget(selected))}
+                >
+                  <Flag />
+                  Raportează o problemă
+                </Button>
+              </div>
+            </div>
+          )}
+          {panel === "place" && !selected && (
+            <div className="map-empty">
+              <p>Locația nu mai este disponibilă.</p>
+              <Button onClick={() => setPanel("list")}>
+                Vezi alte locații
+              </Button>
+            </div>
+          )}
+          {panel === "route" && (
+            <div className="map-panel-body">
+              <div className="route-stops-heading">
+                <strong>Alege două locații</strong>
+                <span>Plecarea și destinația pot fi selectate din catalog sau direct pe hartă.</span>
+              </div>
+              <div className="route-endpoint">
+                <span className="endpoint-letter">A</span>
+                <LocationSearch
+                  label="Punct de plecare"
+                  places={places}
+                  value={origin}
+                  onSelect={setOrigin}
+                  onClear={() => setOrigin(null)}
+                  placeholder="Alege punctul de plecare"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Alege plecarea pe hartă"
+                  onClick={() => setPicking("origin")}
+                >
+                  <MapPin />
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="route-live-location"
+                onClick={requestLiveLocation}
+                disabled={locationState === "loading"}
+              >
+                <LocateFixed />
+                {locationState === "loading"
+                  ? "Se caută locația live…"
+                  : "Folosește locația mea live ca plecare"}
+              </Button>
+              <div className="route-swap">
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Inversează plecarea și destinația"
+                  onClick={() => {
+                    setOrigin(destination);
+                    setDestination(origin);
+                  }}
+                >
+                  <ArrowLeftRight />
+                </Button>
+              </div>
+              <div className="route-endpoint">
+                <span className="endpoint-letter destination">B</span>
+                <LocationSearch
+                  label="Destinație"
+                  places={places}
+                  value={destination}
+                  onSelect={setDestination}
+                  onClear={() => {
+                    setDestination(null);
+                    setSearchValue(null);
+                  }}
+                  placeholder="Alege destinația"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Alege destinația pe hartă"
+                  onClick={() => setPicking("destination")}
+                >
+                  <MapPin />
+                </Button>
+              </div>
+              <div className="field">
+                <Label htmlFor="route-mode">Mod de deplasare</Label>
+                <ChoiceMenu
+                  id="route-mode"
+                  value={travelMode}
+                  options={Object.entries(travelModeLabels).map(
+                    ([value, label]) => ({ value, label }),
+                  )}
+                  onChange={(value) => setTravelMode(value as TravelMode)}
+                />
+              </div>
+              {travelMode === "foot" && <div className="field">
+                <Label htmlFor="route-profile">Adaptează traseul pentru</Label>
+                <ChoiceMenu
+                  id="route-profile"
+                  value={profile}
+                  options={Object.entries(profileLabels).map(([value, label]) => ({
+                    value,
+                    label,
+                  }))}
+                  onChange={(value) => setProfile(value as AccessibilityProfile)}
+                />
+              </div>}
+              {travelMode === "driving" && (
+                <div className="route-mode-note">
+                  <CarFront size={17} />
+                  <span>
+                    Ruta auto urmează străzile. Durata este o estimare fără trafic în timp real.
+                  </span>
+                </div>
+              )}
+              {!origin || !destination ? (
+                <div className="route-instruction">
+                  <Route size={25} />
+                  <p>
+                    Alege punctul de plecare și destinația din catalog sau
+                    direct de pe hartă.
+                  </p>
+                </div>
+              ) : routesQuery.isPending ? (
+                <p role="status">Se compară variantele de traseu…</p>
+              ) : routesQuery.error ? (
+                <div className="form-error" role="alert">
+                  {routesQuery.error.message}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="route-variants"
+                    aria-label="Variante de traseu"
+                  >
+                    {routesQuery.data?.routes.map((route) => (
+                      <motion.button
+                        className={
+                          selectedRoute?.id === route.id ? "selected" : ""
+                        }
+                        whileHover={{ y: -2 }}
+                        whileTap={{ scale: 0.98 }}
+                        transition={{ duration: 0.16 }}
+                        key={route.id}
+                        disabled={route.blocked}
+                        onClick={() => setRouteId(route.id)}
+                        aria-pressed={selectedRoute?.id === route.id}
+                      >
+                        <span>
+                          <strong>{route.name}</strong>
+                          <small>
+                            {route.blocked
+                              ? "Exclus: conține scări sau acces interzis"
+                              : `${formatDistance(route.distance)} · ${formatDuration(route.duration)}`}
+                          </small>
+                        </span>
+                        {route.id === routesQuery.data.recommendedId ? (
+                          <b>Recomandat</b>
+                        ) : route.blocked ? (
+                          <X size={17} />
+                        ) : (
+                          <ChevronRight size={16} />
+                        )}
+                      </motion.button>
+                    ))}
+                  </div>
+                  {!routesQuery.data?.recommendedId && (
+                    <p className="form-error" role="alert">
+                      Nu există o variantă compatibilă cu acest profil.
+                    </p>
+                  )}
+                  {selectedRoute && !selectedRoute.blocked && (
+                    <div className="route-result">
+                      <div className="route-result-metrics">
+                        <div>
+                          <Route size={17} />
+                          <strong>
+                            {formatDistance(selectedRoute.distance)}
+                          </strong>
+                          <small>Distanță estimată</small>
+                        </div>
+                        <div>
+                          <Clock3 size={17} />
+                          <strong>
+                            {formatDuration(selectedRoute.duration)}
+                          </strong>
+                          <small>Durată estimată</small>
+                        </div>
+                      </div>
+                      {routeAccessibilityQuery.isPending && (
+                        <div className="route-accessibility-loading" role="status">
+                          <strong>Se verifică traseul</strong>
+                          <span>Se caută suprafața, trecerile și obstacolele documentate pe OpenStreetMap.</span>
+                          <i aria-hidden="true" />
+                          <i aria-hidden="true" />
+                          <i aria-hidden="true" />
+                        </div>
+                      )}
+                      {routeAccessibilityQuery.isError && (
+                        <p className="route-accessibility-error" role="alert">
+                          {routeAccessibilityQuery.error instanceof Error
+                            ? routeAccessibilityQuery.error.message
+                            : "Avertizările de pe traseu nu au putut fi încărcate."}
+                        </p>
+                      )}
+                      {!routeAccessibilityQuery.isPending &&
+                        !routeAccessibilityQuery.isError &&
+                        accessibilityPoints.length === 0 && (
+                          <div className="route-accessibility-empty">
+                            <strong>Nu au fost găsite obstacole documentate pe această rută.</strong>
+                            <span>Harta afișează doar elementele cu avertizare confirmate în datele OpenStreetMap.</span>
+                          </div>
+                        )}
+                      {accessibilityPoints.length > 0 && (
+                        <section className="route-accessibility-summary" aria-label="Accesibilitate pe traseu">
+                          <div className="route-accessibility-summary-heading">
+                            <div>
+                              <span>DOCUMENTATE PE TRASEUL ALES</span>
+                              <h3>Obstacole pe traseu</h3>
+                            </div>
+                            <strong>
+                              {accessibilityPoints.length} găsite
+                            </strong>
+                          </div>
+                          <p>
+                            Obstacolele documentate sunt afișate pe tot parcursul rutei A–B, în ordinea deplasării. Scorul fiecăruia este calculat din datele disponibile.
+                          </p>
+                          <div className="route-accessibility-stats" aria-label="Rezumat accesibilitate traseu">
+                            <span className="is-warning">{routeWarningPoints.filter((point) => point.status === "limited").length} limitate</span>
+                            <span className="is-problem">{routeWarningPoints.filter((point) => point.status === "problem").length} probleme</span>
+                          </div>
+                          <div className="route-accessibility-items">
+                            {accessibilityPoints.map((point) => (
+                              <button
+                                type="button"
+                                key={point.id}
+                                className={`route-obstacle-card is-${point.status}`}
+                                aria-label={`${point.kind}, ${point.streetName}, scor ${point.score === null ? "nedisponibil" : `${point.score} din 100`}`}
+                                onClick={() => focusAccessibilityPoint(point)}
+                              >
+                                <span className={`accessibility-mini-dot is-${point.status}`} />
+                                <span>
+                                  <b>{point.kind} · {point.streetName}</b>
+                                  {accessibilityDetails(point) && <small>{accessibilityDetails(point)}</small>}
+                                  {accessibilityAccessDetails(point) && <small>{accessibilityAccessDetails(point)}</small>}
+                                  <small>{point.notes[0] ?? "Detalii despre obstacol disponibile la deschidere."}</small>
+                                </span>
+                                <strong>{point.score === null ? "—" : `${point.score}/100`}</strong>
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                      {routeGuidance.length > 0 && (
+                        <section
+                          className="route-guidance"
+                          aria-labelledby="route-guidance-title"
+                        >
+                          <div className="route-guidance-heading">
+                            <div>
+                              <span>GHIDARE PE TRASEU</span>
+                              <h3 id="route-guidance-title">
+                                Indicații pe traseu
+                              </h3>
+                            </div>
+                            <b>{routeGuidance.length} indicații</b>
+                          </div>
+                          <ol className="route-guidance-list">
+                            {routeGuidance.map((item) => (
+                              <li
+                                className={`route-guidance-item is-${item.severity}`}
+                                key={item.id}
+                              >
+                                <span
+                                  className="route-guidance-symbol"
+                                  aria-hidden="true"
+                                >
+                                  {item.symbol}
+                                </span>
+                                <div>
+                                  <strong>{item.title}</strong>
+                                  <small>{item.detail}</small>
+                                </div>
+                              </li>
+                            ))}
+                          </ol>
+                        </section>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+              {destination?.placeId && (
+                <Button
+                  variant="outline"
+                  onClick={() => showPlace(destination.placeId!)}
+                >
+                  <MapPin />
+                  Detaliile destinației
+                </Button>
+              )}
+            </div>
+          )}
+        </motion.aside>
+        )}
+      </AnimatePresence>
+        <div className="map-bottom-bar">
+        <div className="map-legend" aria-label="Legenda hărții">
+          {Object.entries(statusMeta).map(([status, meta]) => (
+            <span key={status}>
+              <i className={`status-legend-dot status-${status}`} />
+              {meta.label}
+            </span>
+          ))}
+          {travelMode === "driving" && (!routeCoordinates || destinationParking.length > 0) && (
+            <span>
+              <i className="parking-legend-dot" />
+              Parcări
+            </span>
+          )}
+        </div>
+        {user && (
+          <Link to="/rapoartele-mele" className="map-reports-link">
+            Rapoartele mele
+          </Link>
+        )}
+      </div>
+      {reporting && (
+        <ReportDialog
+          key={reporting.id}
+          target={reporting}
+          onClose={closeReport}
+        />
+      )}
+      {editingAccessibilityPoint && (
+        <ObstacleEditor
+          point={editingAccessibilityPoint}
+          onClose={() => setEditingAccessibilityPoint(null)}
+          onSaved={(point) => {
+            setSelectedAccessibilityPoint(point);
+            setEditingAccessibilityPoint(null);
+            void routeAccessibilityQuery.refetch();
+          }}
+        />
+      )}
     </section>
   );
 }
