@@ -33,6 +33,8 @@ obj/
 Obj/
 dist/
 out/
+.tanstack/
+frontend/.tanstack/
 .next
 .swc
 _static
@@ -94,3 +96,8 @@ knip.jsonc
 
 *.tsbuildinfo
 ._*
+
+# Frontend verification artifacts
+frontend/.artifacts/
+frontend/test-results/
+frontend/playwright-report/
