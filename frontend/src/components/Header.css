@@ -90,6 +90,36 @@
   gap: 14px;
 }
 
+.header-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-account-name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid rgba(69, 82, 103, 0.2);
+  border-radius: 999px;
+  color: #465267;
+  background: rgba(247, 242, 234, 0.86);
+  font-size: 0.84rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: color 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.header-account-name:hover,
+.header-account-name:focus-visible {
+  color: #163b83;
+  border-color: rgba(22, 59, 131, 0.28);
+  background: rgba(22, 59, 131, 0.1);
+  text-decoration: none;
+  outline: none;
+}
+
 .login-link {
   width: 50px;
   height: 50px;
@@ -199,6 +229,14 @@
   .header-actions {
     display: grid;
     grid-template-columns: 50px 1fr;
+  }
+
+  .header-account {
+    justify-content: flex-start;
+  }
+
+  .header-account-name {
+    display: none;
   }
 
   .header-action {

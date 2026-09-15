@@ -1,11 +1,14 @@
-import { UserRound } from "lucide-react";
+import { LogOut, UserRound } from "lucide-react";
 import { Link, useLocation } from "@tanstack/react-router";
 import { mainNavigation } from "../config/navigation";
 import accessibilityLogo from "../assets/accessurban-accessibility-logo-clean.png";
+import { logoutMockUser } from "../stores/authStore";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 import "./Header.css";
 
 export function Header() {
   const location = useLocation();
+  const currentUser = useCurrentUser();
 
   const isActive = (href: string) => {
     const [path, hash] = href.split("#");
@@ -47,9 +50,22 @@ export function Header() {
         </nav>
 
         <div className="header-actions">
-          <Link className="login-link" to="/autentificare" aria-label="Autentificare">
-            <UserRound aria-hidden="true" size={22} strokeWidth={2.1} />
-          </Link>
+          {currentUser ? (
+            <div className="header-account">
+              {currentUser.role === "ADMIN" ? (
+                <Link className="header-account-name" to="/admin" search={{ tab: "overview" }}>Administrare</Link>
+              ) : (
+                <Link className="header-account-name" to="/profil" title={currentUser.email}>Contul meu</Link>
+              )}
+              <button className="login-link" type="button" onClick={logoutMockUser} aria-label="Deconectare">
+                <LogOut aria-hidden="true" size={21} strokeWidth={2.1} />
+              </button>
+            </div>
+          ) : (
+            <Link className="login-link" to="/autentificare" aria-label="Autentificare">
+              <UserRound aria-hidden="true" size={22} strokeWidth={2.1} />
+            </Link>
+          )}
 
           <a className="header-action" href="/map">
             Vezi harta
