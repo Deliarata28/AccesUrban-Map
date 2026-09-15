@@ -1,6 +1,6 @@
 .map-page-shell {
-  width: min(100% - 40px, 1640px);
-  margin: 20px auto;
+  width: min(100% - 32px, 1720px);
+  margin: 16px auto;
   flex: none;
   position: relative;
   isolation: isolate;
@@ -10,7 +10,7 @@
 }
 
 .map-page-shell .map-workspace {
-  height: clamp(430px, calc(100dvh - 126px), 760px);
+  height: clamp(470px, calc(100dvh - 112px), 820px);
   min-height: 0;
 }
 
