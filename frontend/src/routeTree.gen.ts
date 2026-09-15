@@ -20,6 +20,7 @@ import { Route as MapRouteImport } from './app/routes/map'
 import { Route as ProfilRouteImport } from './app/routes/profil'
 import { Route as ProgrameRouteImport } from './app/routes/programe'
 import { Route as RapoarteleMeleRouteImport } from './app/routes/rapoartele-mele'
+import { Route as TrebuieSaStiiRouteImport } from './app/routes/trebuie-sa-stii'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -76,6 +77,11 @@ const RapoarteleMeleRoute = RapoarteleMeleRouteImport.update({
   path: '/rapoartele-mele',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrebuieSaStiiRoute = TrebuieSaStiiRouteImport.update({
+  id: '/trebuie-sa-stii',
+  path: '/trebuie-sa-stii',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/profil': typeof ProfilRoute
   '/programe': typeof ProgrameRoute
   '/rapoartele-mele': typeof RapoarteleMeleRoute
+  '/trebuie-sa-stii': typeof TrebuieSaStiiRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/profil': typeof ProfilRoute
   '/programe': typeof ProgrameRoute
   '/rapoartele-mele': typeof RapoarteleMeleRoute
+  '/trebuie-sa-stii': typeof TrebuieSaStiiRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/profil': typeof ProfilRoute
   '/programe': typeof ProgrameRoute
   '/rapoartele-mele': typeof RapoarteleMeleRoute
+  '/trebuie-sa-stii': typeof TrebuieSaStiiRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/programe'
     | '/rapoartele-mele'
+    | '/trebuie-sa-stii'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/programe'
     | '/rapoartele-mele'
+    | '/trebuie-sa-stii'
   id:
     | '__root__'
     | '/'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '/profil'
     | '/programe'
     | '/rapoartele-mele'
+    | '/trebuie-sa-stii'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -171,6 +183,7 @@ export interface RootRouteChildren {
   ProfilRoute: typeof ProfilRoute
   ProgrameRoute: typeof ProgrameRoute
   RapoarteleMeleRoute: typeof RapoarteleMeleRoute
+  TrebuieSaStiiRoute: typeof TrebuieSaStiiRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RapoarteleMeleRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/trebuie-sa-stii': {
+      id: '/trebuie-sa-stii'
+      path: '/trebuie-sa-stii'
+      fullPath: '/trebuie-sa-stii'
+      preLoaderRoute: typeof TrebuieSaStiiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -267,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfilRoute: ProfilRoute,
   ProgrameRoute: ProgrameRoute,
   RapoarteleMeleRoute: RapoarteleMeleRoute,
+  TrebuieSaStiiRoute: TrebuieSaStiiRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
