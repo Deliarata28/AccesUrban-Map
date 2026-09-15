@@ -10,17 +10,25 @@
 
 import { Route as rootRouteImport } from './app/routes/__root'
 import { Route as IndexRouteImport } from './app/routes/index'
+import { Route as AdminRouteImport } from './app/routes/admin'
 import { Route as AutentificareRouteImport } from './app/routes/autentificare'
 import { Route as ConectareRouteImport } from './app/routes/conectare'
 import { Route as ContacteRouteImport } from './app/routes/contacte'
 import { Route as HomeRouteImport } from './app/routes/home'
 import { Route as InregistrareRouteImport } from './app/routes/inregistrare'
 import { Route as MapRouteImport } from './app/routes/map'
+import { Route as ProfilRouteImport } from './app/routes/profil'
 import { Route as ProgrameRouteImport } from './app/routes/programe'
+import { Route as RapoarteleMeleRouteImport } from './app/routes/rapoartele-mele'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AutentificareRoute = AutentificareRouteImport.update({
@@ -53,85 +61,116 @@ const MapRoute = MapRouteImport.update({
   path: '/map',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfilRoute = ProfilRouteImport.update({
+  id: '/profil',
+  path: '/profil',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProgrameRoute = ProgrameRouteImport.update({
   id: '/programe',
   path: '/programe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RapoarteleMeleRoute = RapoarteleMeleRouteImport.update({
+  id: '/rapoartele-mele',
+  path: '/rapoartele-mele',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/autentificare': typeof AutentificareRoute
   '/conectare': typeof ConectareRoute
   '/contacte': typeof ContacteRoute
   '/home': typeof HomeRoute
   '/inregistrare': typeof InregistrareRoute
   '/map': typeof MapRoute
+  '/profil': typeof ProfilRoute
   '/programe': typeof ProgrameRoute
+  '/rapoartele-mele': typeof RapoarteleMeleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/autentificare': typeof AutentificareRoute
   '/conectare': typeof ConectareRoute
   '/contacte': typeof ContacteRoute
   '/home': typeof HomeRoute
   '/inregistrare': typeof InregistrareRoute
   '/map': typeof MapRoute
+  '/profil': typeof ProfilRoute
   '/programe': typeof ProgrameRoute
+  '/rapoartele-mele': typeof RapoarteleMeleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/autentificare': typeof AutentificareRoute
   '/conectare': typeof ConectareRoute
   '/contacte': typeof ContacteRoute
   '/home': typeof HomeRoute
   '/inregistrare': typeof InregistrareRoute
   '/map': typeof MapRoute
+  '/profil': typeof ProfilRoute
   '/programe': typeof ProgrameRoute
+  '/rapoartele-mele': typeof RapoarteleMeleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/autentificare'
     | '/conectare'
     | '/contacte'
     | '/home'
     | '/inregistrare'
     | '/map'
+    | '/profil'
     | '/programe'
+    | '/rapoartele-mele'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/autentificare'
     | '/conectare'
     | '/contacte'
     | '/home'
     | '/inregistrare'
     | '/map'
+    | '/profil'
     | '/programe'
+    | '/rapoartele-mele'
   id:
     | '__root__'
     | '/'
+    | '/admin'
     | '/autentificare'
     | '/conectare'
     | '/contacte'
     | '/home'
     | '/inregistrare'
     | '/map'
+    | '/profil'
     | '/programe'
+    | '/rapoartele-mele'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
   AutentificareRoute: typeof AutentificareRoute
   ConectareRoute: typeof ConectareRoute
   ContacteRoute: typeof ContacteRoute
   HomeRoute: typeof HomeRoute
   InregistrareRoute: typeof InregistrareRoute
   MapRoute: typeof MapRoute
+  ProfilRoute: typeof ProfilRoute
   ProgrameRoute: typeof ProgrameRoute
+  RapoarteleMeleRoute: typeof RapoarteleMeleRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -141,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/autentificare': {
@@ -185,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MapRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profil': {
+      id: '/profil'
+      path: '/profil'
+      fullPath: '/profil'
+      preLoaderRoute: typeof ProfilRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/programe': {
       id: '/programe'
       path: '/programe'
@@ -192,18 +245,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProgrameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rapoartele-mele': {
+      id: '/rapoartele-mele'
+      path: '/rapoartele-mele'
+      fullPath: '/rapoartele-mele'
+      preLoaderRoute: typeof RapoarteleMeleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
   AutentificareRoute: AutentificareRoute,
   ConectareRoute: ConectareRoute,
   ContacteRoute: ContacteRoute,
   HomeRoute: HomeRoute,
   InregistrareRoute: InregistrareRoute,
   MapRoute: MapRoute,
+  ProfilRoute: ProfilRoute,
   ProgrameRoute: ProgrameRoute,
+  RapoarteleMeleRoute: RapoarteleMeleRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
