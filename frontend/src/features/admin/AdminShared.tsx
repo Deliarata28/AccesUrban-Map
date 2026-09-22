@@ -5,8 +5,8 @@ import { Button } from "../../components/ui/button";
 import { statusMeta } from "../../config/accessibility";
 import {
   reportStatusLabels,
-  type ReportStatus,
-} from "../../stores/reportStore";
+  type AppReportStatus,
+} from "../../services/reportsApi";
 import type { AccessibilityStatus } from "../../types/place";
 
 export const formatDate = (date: string) =>
@@ -18,12 +18,12 @@ export const formatDate = (date: string) =>
 export function StatusBadge({
   status,
 }: {
-  status: AccessibilityStatus | ReportStatus;
+  status: AccessibilityStatus | AppReportStatus;
 }) {
   const label =
     status in statusMeta
       ? statusMeta[status as AccessibilityStatus].label
-      : reportStatusLabels[status as ReportStatus];
+      : reportStatusLabels[status as AppReportStatus];
   return (
     <Badge className={`status-badge status-${status}`}>
       <span aria-hidden="true" />

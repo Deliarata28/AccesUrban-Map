@@ -735,6 +735,13 @@
   color: #869199;
   font-size: 14px;
 }
+.section-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .admin-filters {
   display: flex;
   gap: 12px;
@@ -872,6 +879,19 @@
   max-width: 760px;
   max-height: 86vh;
   overflow-y: auto;
+}
+.account-editor[data-slot],
+.password-reset-dialog[data-slot] {
+  width: min(650px, calc(100vw - 32px));
+  max-width: 650px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+.admin-dialog .form-hint {
+  margin: -4px 0 0;
+  color: #7e9094;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .account-details {
   display: grid;

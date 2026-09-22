@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   Search,
@@ -27,10 +27,11 @@ import {
   statusMeta,
 } from "../../config/accessibility";
 import { filterPlaces, evaluateAccessibility } from "../../utils/accessibility";
-import { deleteMockPlace } from "../../stores/placeStore";
+import { deleteApiPlace } from "../../services/placesApi";
 import { StatusBadge, EmptyState, Pagination, formatDate } from "./AdminShared";
 import { PlaceEditor } from "./PlaceEditor";
 import { ChoiceMenu } from "../../components/ChoiceMenu";
+import { ErrorPopup } from "../../components/ErrorPopup";
 
 export function PlacesManager({
   places,
@@ -49,9 +50,11 @@ export function PlacesManager({
   );
   const [removing, setRemoving] = useState<MapPlace | null>(null);
   const [notice, setNotice] = useState("");
+  const queryClient = useQueryClient();
   const deletion = useMutation({
-    mutationFn: async (id: string) => deleteMockPlace(id),
+    mutationFn: async (id: string) => deleteApiPlace(id),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["places"] });
       setRemoving(null);
       setNotice(
         "Intrarea a fost ștearsă de pe hartă. Semnalele existente rămân în istoric.",
@@ -265,9 +268,7 @@ export function PlacesManager({
             </DialogDescription>
           </DialogHeader>
           {deletion.error && (
-            <p className="form-error" role="alert">
-              {deletion.error.message}
-            </p>
+            <ErrorPopup error={deletion.error} />
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setRemoving(null)}>

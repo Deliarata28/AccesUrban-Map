@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Save } from "lucide-react";
 import {
   Dialog,
@@ -26,9 +26,10 @@ import type {
   AccessibilityValue,
 } from "../../types/place";
 import { evaluateAccessibility } from "../../utils/accessibility";
-import { saveMockPlace } from "../../stores/placeStore";
+import { saveApiPlace } from "../../services/placesApi";
 import { StatusBadge } from "./AdminShared";
 import { ChoiceMenu } from "../../components/ChoiceMenu";
+import { ErrorPopup } from "../../components/ErrorPopup";
 
 const newPlace = (): PlaceInput => ({
   name: "",
@@ -60,10 +61,14 @@ export function PlaceEditor({
   const [draft, setDraft] = useState<PlaceInput>(() =>
     place ? structuredClone(place) : newPlace(),
   );
+  const queryClient = useQueryClient();
   const assessment = evaluateAccessibility(draft.accessibility);
   const mutation = useMutation({
-    mutationFn: async () => saveMockPlace(draft, place?.id),
-    onSuccess: onSaved,
+    mutationFn: async () => saveApiPlace(draft, place?.id),
+    onSuccess: (savedPlace) => {
+      void queryClient.invalidateQueries({ queryKey: ["places"] });
+      onSaved(savedPlace);
+    },
   });
   const set = <K extends keyof PlaceInput>(key: K, value: PlaceInput[K]) =>
     setDraft((previous) => ({ ...previous, [key]: value }));
@@ -239,9 +244,7 @@ export function PlaceEditor({
             <span>Date confirmate pentru publicare</span>
           </label>
           {mutation.error && (
-            <p className="form-error" role="alert">
-              {mutation.error.message}
-            </p>
+            <ErrorPopup error={mutation.error} />
           )}
           <DialogFooter>
             <Button

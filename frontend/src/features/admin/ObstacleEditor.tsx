@@ -14,6 +14,7 @@ import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import type { AccessibilityPoint } from "../../services/osmAccessibility";
 import { saveObstacleOverride } from "../../stores/obstacleStore";
+import { ErrorPopup } from "../../components/ErrorPopup";
 
 export function ObstacleEditor({
   point,
@@ -157,7 +158,7 @@ export function ObstacleEditor({
               placeholder="Câte o informație verificată pe fiecare rând"
             />
           </div>
-          {error && <p className="form-error" role="alert">{error}</p>}
+          <ErrorPopup message={error || null} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Anulează

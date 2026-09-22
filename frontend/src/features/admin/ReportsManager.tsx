@@ -23,24 +23,25 @@ import {
   DialogFooter,
 } from "../../components/ui/dialog";
 import {
-  moderateMockReport,
+  moderateApiReport,
   reportTypeLabels,
   reportStatusLabels,
-  type MockReport,
-  type ReportStatus,
-} from "../../stores/reportStore";
+  type AppReport,
+  type AppReportStatus,
+} from "../../services/reportsApi";
 import type { MapPlace } from "../../types/place";
 import { normalizeSearch } from "../../utils/accessibility";
 import { StatusBadge, EmptyState, Pagination, formatDate } from "./AdminShared";
+import { ErrorPopup } from "../../components/ErrorPopup";
 
 export function ReportsManager({
   reports,
   places,
 }: {
-  reports: MockReport[];
+  reports: AppReport[];
   places: MapPlace[];
 }) {
-  const [status, setStatus] = useState<ReportStatus | "">("");
+  const [status, setStatus] = useState<AppReportStatus | "">("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export function ReportsManager({
   const selected = reports.find((report) => report.id === selectedId);
   const mutation = useMutation({
     mutationFn: async (decision: "APPROVED" | "REJECTED") =>
-      moderateMockReport(selectedId!, decision, note),
+      moderateApiReport(selectedId!, decision, note),
     onSuccess: (report) => {
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
       void queryClient.invalidateQueries({ queryKey: ["public-reports"] });
@@ -102,7 +103,7 @@ export function ReportsManager({
               aria-pressed={status === value}
               key={value}
               onClick={() => {
-                setStatus(value as ReportStatus | "");
+                setStatus(value as AppReportStatus | "");
                 setPage(1);
               }}
             >
@@ -247,7 +248,7 @@ export function ReportsManager({
               )}
               {places.some((place) => place.id === selected.placeId) ? (
                 <Button asChild variant="outline">
-                  <Link to="/map" search={{ place: selected.placeId }}>
+                  <Link to="/map" search={{ place: selected.placeId ?? undefined }}>
                     <ExternalLink />
                     Vezi locația pe hartă
                   </Link>
@@ -288,9 +289,7 @@ export function ReportsManager({
                     Facilitățile se actualizează separat, după verificare.
                   </p>
                   {mutation.error && (
-                    <p className="form-error" role="alert">
-                      {mutation.error.message}
-                    </p>
+                    <ErrorPopup error={mutation.error} />
                   )}
                   <DialogFooter>
                     <Button

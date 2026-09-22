@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Link, useSearch } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   MapPin,
@@ -15,28 +16,38 @@ import {
   Menu,
   X,
   ArrowLeft,
+  Pencil,
+  Trash2,
+  KeyRound,
+  Plus,
+  Mail,
+  UserRound,
 } from "lucide-react";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { usePlaces, useReports, useUsers } from "../../hooks/useAppData";
-import { logoutMockUser } from "../../stores/authStore";
-import type { MockUser } from "../../stores/authStore";
-import { reportStatusLabels, reportTypeLabels } from "../../stores/reportStore";
+import { useContactMessages, usePlaces, useReports, useUsers } from "../../hooks/useAppData";
+import { logoutUser, type AppUser } from "../../stores/sessionStore";
+import { reportStatusLabels, reportTypeLabels, type AppReport } from "../../services/reportsApi";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { Card } from "../../components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
-import type { MockReport } from "../../stores/reportStore";
 import { Overview } from "./Overview";
 import { PlacesManager } from "./PlacesManager";
 import { ReportsManager } from "./ReportsManager";
 import { EmptyState, formatDate } from "./AdminShared";
 import { normalizeSearch } from "../../utils/accessibility";
+import { deleteApiUser, resetApiUserPassword } from "../../services/usersApi";
+import { AccountEditor } from "./AccountEditor";
+import { MessagesManager } from "./MessagesManager";
+import { ErrorPopup } from "../../components/ErrorPopup";
 import logo from "../../assets/accessurban-accessibility-logo-clean.png";
 import type { AdminTab } from "../../app/routes/admin";
 import "../reports/Reports.css";
@@ -46,11 +57,12 @@ const navigation: { tab: AdminTab; label: string; icon: typeof LayoutDashboard }
   { tab: "overview", label: "Dashboard", icon: LayoutDashboard },
   { tab: "places", label: "Date", icon: MapPin },
   { tab: "reports", label: "Verificări", icon: Flag },
+  { tab: "messages", label: "Mesaje", icon: Mail },
   { tab: "community", label: "Conturi", icon: UsersRound },
 ];
 
 const accessibilityProfileLabels: Record<
-  MockUser["accessibilityProfile"],
+  AppUser["accessibilityProfile"],
   string
 > = {
   WHEELCHAIR: "Scaun rulant",
@@ -94,21 +106,39 @@ export function AdminPage() {
 }
 function AdminWorkspace() {
   const { tab } = useSearch({ from: "/admin" });
+  const navigate = useNavigate();
   const user = useCurrentUser()!;
   const placesQuery = usePlaces();
   const reportsQuery = useReports();
   const usersQuery = useUsers();
+  const messagesQuery = useContactMessages();
   const places = placesQuery.data ?? [];
   const reports = reportsQuery.data ?? [];
   const [menuOpen, setMenuOpen] = useState(false);
   const [userSearch, setUserSearch] = useState("");
-  const [selectedAccount, setSelectedAccount] = useState<MockUser | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<AppUser | null>(null);
+  const [editingAccount, setEditingAccount] = useState<AppUser | "new" | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<AppUser | null>(null);
+  const [removingAccount, setRemovingAccount] = useState<AppUser | null>(null);
+  const [notice, setNotice] = useState("");
+  const queryClient = useQueryClient();
   const pendingCount = reports.filter(
     (report) => report.status === "PENDING",
   ).length;
   const error = placesQuery.error || reportsQuery.error || usersQuery.error;
-  const users = (usersQuery.data ?? []).filter((person) =>
-    normalizeSearch(`${person.name} ${person.email}`).includes(
+  const messageError = messagesQuery.error;
+  const accountDeletion = useMutation({
+    mutationFn: deleteApiUser,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      setSelectedAccount(null);
+      setRemovingAccount(null);
+      setNotice("Contul a fost șters.");
+    },
+  });
+ const users = (usersQuery.data ?? []).filter((person) =>
+    person.role !== "ADMIN" &&
+   normalizeSearch(`${person.name} ${person.email}`).includes(
       normalizeSearch(userSearch),
     ),
   );
@@ -129,6 +159,9 @@ function AdminWorkspace() {
     current[report.status.toLowerCase() as "pending" | "approved" | "rejected"] += 1;
     reportStats.set(report.userId, current);
   });
+  const removingAccountReportCount = removingAccount
+    ? reportStats.get(removingAccount.id)?.total ?? 0
+    : 0;
   return (
     <div className="admin-shell">
       <a href="#admin-content" className="skip-link">
@@ -166,6 +199,9 @@ function AdminWorkspace() {
               {item.tab === "reports" && pendingCount > 0 && (
                 <b>{pendingCount}</b>
               )}
+              {item.tab === "messages" && (messagesQuery.data?.filter((message) => message.status === "New").length ?? 0) > 0 && (
+                <b>{messagesQuery.data?.filter((message) => message.status === "New").length}</b>
+              )}
             </Link>
           ))}
         </nav>
@@ -181,9 +217,13 @@ function AdminWorkspace() {
               </Link>
             </div>
           </div>
-          <Link className="back-to-site" to="/home">
-            <ArrowLeft size={17} />
-            Înapoi la site
+         <Link className="back-to-site" to="/home">
+           <ArrowLeft size={17} />
+           Înapoi la site
+         </Link>
+          <Link className="back-to-site admin-profile-link" to="/profil">
+            <UserRound size={17} />
+            Profilul meu
           </Link>
           <div className="sidebar-account">
             <span className="admin-avatar">AU</span>
@@ -192,7 +232,10 @@ function AdminWorkspace() {
               <small>Administrator</small>
             </div>
             <button
-              onClick={logoutMockUser}
+              onClick={() => {
+                logoutUser();
+                void navigate({ to: "/conectare" });
+              }}
               aria-label="Deconectare administrator"
             >
               <LogOut size={18} />
@@ -229,15 +272,16 @@ function AdminWorkspace() {
               <h2>Dashboard</h2>
             </div>
           )}
-          {error ? (
+          {error || messageError ? (
             <div className="admin-error" role="alert">
+              <ErrorPopup error={error || messageError} />
               <h2>Datele nu au putut fi încărcate</h2>
-              <p>{error.message}</p>
               <Button
                 onClick={() => {
                   void placesQuery.refetch();
                   void reportsQuery.refetch();
                   void usersQuery.refetch();
+                  void messagesQuery.refetch();
                 }}
               >
                 Încearcă din nou
@@ -245,7 +289,8 @@ function AdminWorkspace() {
             </div>
           ) : placesQuery.isPending ||
             reportsQuery.isPending ||
-            usersQuery.isPending ? (
+            usersQuery.isPending ||
+            messagesQuery.isPending ? (
             <div className="admin-loading" role="status">
               Se încarcă datele…
             </div>
@@ -258,20 +303,34 @@ function AdminWorkspace() {
               {tab === "reports" && (
                 <ReportsManager reports={reports} places={places} />
               )}
+              {tab === "messages" && (
+                <MessagesManager messages={messagesQuery.data ?? []} />
+              )}
               {tab === "community" && (
                 <>
                   <div className="section-heading">
                     <div>
                       <h2>Oameni care fac diferența</h2>
                       <p>
-                        Conturile înregistrate și contribuțiile lor în acest
-                        browser.
+                        Conturile înregistrate și contribuțiile lor în
+                        platformă.
                       </p>
                     </div>
-                    <span className="pending-label">
-                      {usersQuery.data?.length ?? 0} conturi
-                    </span>
+                    <div className="section-heading-actions">
+                      <span className="pending-label">
+                        {users.length} utilizatori
+                      </span>
+                      <Button onClick={() => setEditingAccount("new")}>
+                        <Plus />
+                        Adaugă cont
+                      </Button>
+                    </div>
                   </div>
+                  {notice && (
+                    <p className="admin-notice" role="status">
+                      {notice}
+                    </p>
+                  )}
                   <Card className="admin-panel">
                     <div className="admin-filters">
                       <div className="search-control">
@@ -354,14 +413,54 @@ function AdminWorkspace() {
                                 <small>atașate rapoartelor</small>
                               </td>
                               <td>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  aria-label={`Vezi detaliile contului ${person.name}`}
-                                  onClick={() => setSelectedAccount(person)}
-                                >
-                                  <Eye size={17} />
-                                </Button>
+                                <div className="row-actions">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label={`Vezi detaliile contului ${person.name}`}
+                                    onClick={() => setSelectedAccount(person)}
+                                  >
+                                    <Eye size={17} />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label={`Editează contul ${person.name}`}
+                                    onClick={() => {
+                                      setSelectedAccount(null);
+                                      setEditingAccount(person);
+                                    }}
+                                  >
+                                    <Pencil size={17} />
+                                  </Button>
+                                  {person.id !== user.id && (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={`Resetează parola contului ${person.name}`}
+                                        onClick={() => {
+                                          setSelectedAccount(null);
+                                          setPasswordTarget(person);
+                                        }}
+                                      >
+                                        <KeyRound size={17} />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label={`Șterge contul ${person.name}`}
+                                        onClick={() => {
+                                          accountDeletion.reset();
+                                          setSelectedAccount(null);
+                                          setRemovingAccount(person);
+                                        }}
+                                      >
+                                        <Trash2 size={17} />
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -400,6 +499,79 @@ function AdminWorkspace() {
                       )}
                     </DialogContent>
                   </Dialog>
+                  {editingAccount && (
+                    <AccountEditor
+                      key={editingAccount === "new" ? "new" : editingAccount.id}
+                      account={editingAccount === "new" ? undefined : editingAccount}
+                      currentUserId={user.id}
+                      onClose={() => setEditingAccount(null)}
+                      onSaved={(savedAccount) => {
+                        const wasNewAccount = editingAccount === "new";
+                        setEditingAccount(null);
+                        setNotice(
+                          wasNewAccount
+                            ? `Contul „${savedAccount.name}” a fost creat.`
+                            : `Contul „${savedAccount.name}” a fost actualizat.`,
+                        );
+                      }}
+                    />
+                  )}
+                  {passwordTarget && (
+                    <AccountPasswordReset
+                      key={passwordTarget.id}
+                      account={passwordTarget}
+                      onClose={() => setPasswordTarget(null)}
+                      onSaved={() => {
+                        setPasswordTarget(null);
+                        setNotice(`Parola contului „${passwordTarget.name}” a fost resetată.`);
+                      }}
+                    />
+                  )}
+                  <Dialog
+                    open={!!removingAccount}
+                    onOpenChange={(open) => {
+                      if (!open && !accountDeletion.isPending) setRemovingAccount(null);
+                    }}
+                  >
+                    <DialogContent className="admin-dialog">
+                      <DialogHeader>
+                        <DialogTitle>
+                          {removingAccountReportCount > 0 && removingAccount
+                            ? "Contul are rapoarte păstrate în istoric"
+                            : "Ștergi acest cont?"}
+                        </DialogTitle>
+                        <DialogDescription>
+                          {removingAccountReportCount > 0 && removingAccount
+                            ? `„${removingAccount.name}” nu poate fi șters deoarece a trimis rapoarte. Păstrăm istoricul contribuțiilor.`
+                            : `„${removingAccount?.name}” va fi eliminat definitiv din platformă.`}
+                        </DialogDescription>
+                      </DialogHeader>
+                      {accountDeletion.error && (
+                        <ErrorPopup error={accountDeletion.error} />
+                      )}
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setRemovingAccount(null)}
+                          disabled={accountDeletion.isPending}
+                        >
+                          {removingAccountReportCount > 0
+                            ? "Închide"
+                            : "Păstrează contul"}
+                        </Button>
+                        {removingAccount && removingAccountReportCount === 0 && (
+                          <Button
+                            variant="destructive"
+                            disabled={accountDeletion.isPending}
+                            onClick={() => accountDeletion.mutate(removingAccount.id)}
+                          >
+                            <Trash2 />
+                            {accountDeletion.isPending ? "Se șterge…" : "Șterge contul"}
+                          </Button>
+                        )}
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </>
               )}
             </>
@@ -422,8 +594,8 @@ function AccountDetails({
   reports,
   stats,
 }: {
-  user: MockUser;
-  reports: MockReport[];
+  user: AppUser;
+  reports: AppReport[];
   stats?: AccountReportStats;
 }) {
   return (
@@ -481,5 +653,112 @@ function AccountDetails({
         <p className="muted-note">Acest cont nu are încă rapoarte trimise.</p>
       )}
     </div>
+  );
+}
+
+function AccountPasswordReset({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: AppUser;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => resetApiUserPassword(account.id, newPassword),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      onSaved();
+    },
+  });
+
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setValidationError("");
+
+    if (newPassword.length < 8) {
+      setValidationError("Parola trebuie să aibă cel puțin 8 caractere.");
+      return;
+    }
+
+    if (newPassword !== confirmation) {
+      setValidationError("Cele două parole nu coincid.");
+      return;
+    }
+
+    mutation.mutate();
+  };
+
+  const error = validationError || (mutation.error instanceof Error ? mutation.error.message : "");
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !mutation.isPending) onClose();
+      }}
+    >
+      <DialogContent className="admin-dialog password-reset-dialog">
+        <DialogHeader>
+          <DialogTitle>Resetează parola</DialogTitle>
+          <DialogDescription>
+            Setezi o parolă nouă pentru contul „{account.name}”. Parola veche nu este afișată.
+          </DialogDescription>
+        </DialogHeader>
+        <form className="admin-form" onSubmit={submit}>
+          <div className="field">
+            <Label htmlFor="reset-account-password">Parolă nouă</Label>
+            <Input
+              id="reset-account-password"
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              minLength={8}
+              maxLength={100}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+          <div className="field">
+            <Label htmlFor="reset-account-password-confirmation">Confirmă parola nouă</Label>
+            <Input
+              id="reset-account-password-confirmation"
+              type="password"
+              value={confirmation}
+              onChange={(event) => setConfirmation(event.target.value)}
+              minLength={8}
+              maxLength={100}
+              required
+              autoComplete="new-password"
+            />
+          </div>
+          <p className="form-hint">
+            În baza de date se păstrează doar hash-ul parolei, nu parola scrisă aici.
+          </p>
+          {error && (
+            <ErrorPopup message={error} error={mutation.error} />
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={mutation.isPending}
+            >
+              Anulează
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              <KeyRound />
+              {mutation.isPending ? "Se resetează…" : "Resetează parola"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
