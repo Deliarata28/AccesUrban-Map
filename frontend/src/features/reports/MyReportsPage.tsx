@@ -5,8 +5,9 @@ import { Footer } from "../../components/Footer";
 import { Button } from "../../components/ui/button";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useReports, usePlaces } from "../../hooks/useAppData";
-import { reportTypeLabels } from "../../stores/reportStore";
+import { reportTypeLabels } from "../../services/reportsApi";
 import { StatusBadge, formatDate } from "../admin/AdminShared";
+import { ErrorPopup } from "../../components/ErrorPopup";
 import "./Reports.css";
 export function MyReportsPage() {
   const user = useCurrentUser();
@@ -34,9 +35,7 @@ export function MyReportsPage() {
         ) : reports.isPending ? (
           <p role="status">Se încarcă rapoartele…</p>
         ) : reports.error ? (
-          <p className="form-error" role="alert">
-            {reports.error.message}
-          </p>
+          <ErrorPopup error={reports.error} />
         ) : (
           <div className="my-reports-list">
             {!(reports.data ?? []).filter((r) => r.userId === user.id)
@@ -79,7 +78,7 @@ export function MyReportsPage() {
                     (place) => place.id === report.placeId,
                   ) ? (
                     <Button asChild variant="outline" size="sm">
-                      <Link to="/map" search={{ place: report.placeId }}>
+                      <Link to="/map" search={{ place: report.placeId ?? undefined }}>
                         Vezi locația
                       </Link>
                     </Button>

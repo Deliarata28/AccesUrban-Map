@@ -1,14 +1,20 @@
 import { LogOut, UserRound } from "lucide-react";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { mainNavigation } from "../config/navigation";
 import accessibilityLogo from "../assets/accessurban-accessibility-logo-clean.png";
-import { logoutMockUser } from "../stores/authStore";
+import { logoutUser } from "../stores/sessionStore";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import "./Header.css";
 
 export function Header() {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentUser = useCurrentUser();
+
+  const handleLogout = () => {
+    logoutUser();
+    void navigate({ to: "/conectare" });
+  };
 
   const isActive = (href: string) => {
     const [path, hash] = href.split("#");
@@ -57,7 +63,7 @@ export function Header() {
               ) : (
                 <Link className="header-account-name" to="/profil" title={currentUser.email}>Contul meu</Link>
               )}
-              <button className="login-link" type="button" onClick={logoutMockUser} aria-label="Deconectare">
+              <button className="login-link" type="button" onClick={handleLogout} aria-label="Deconectare">
                 <LogOut aria-hidden="true" size={21} strokeWidth={2.1} />
               </button>
             </div>

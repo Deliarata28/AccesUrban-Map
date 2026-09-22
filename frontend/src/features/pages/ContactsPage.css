@@ -224,6 +224,13 @@ a.contacts-detail-card:focus-visible {
   line-height: 1.5;
 }
 
+.contacts-success {
+  margin: 0;
+  color: #3f7a64;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 @media (max-width: 820px) {
   .contacts-layout { grid-template-columns: 1fr; }
   .contacts-sidebar { grid-template-columns: minmax(0, 1fr) minmax(230px, 0.8fr); align-items: stretch; }

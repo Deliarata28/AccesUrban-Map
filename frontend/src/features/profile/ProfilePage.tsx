@@ -1,13 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Check, Mail, MapPinned, ShieldCheck, UserRound } from "lucide-react";
+import { Check, KeyRound, Mail, MapPinned, ShieldCheck, UserRound } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Footer } from "../../components/Footer";
 import { Header } from "../../components/Header";
 import {
   type AccessibilityProfile,
-  updateMockUser,
-} from "../../stores/authStore";
+  changeCurrentUserPassword,
+  updateCurrentUser,
+} from "../../stores/sessionStore";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { uploadImage } from "../../services/photosApi";
+import { ErrorPopup } from "../../components/ErrorPopup";
 import "./ProfilePage.css";
 
 const profileOptions: Array<{
@@ -47,52 +50,111 @@ export function ProfilePage() {
     () => user?.accessibilityProfile ?? "WHEELCHAIR",
   );
   const [avatarUrl, setAvatarUrl] = useState<string | null>(() => user?.avatarUrl ?? null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<unknown>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [passwordFeedback, setPasswordFeedback] = useState<{
+    type: "error" | "success";
+    message: string;
+  } | null>(null);
+  const [passwordError, setPasswordError] = useState<unknown>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     setName(user?.name ?? "");
     setAccessibilityProfile(user?.accessibilityProfile ?? "WHEELCHAIR");
     setAvatarUrl(user?.avatarUrl ?? null);
+    setAvatarFile(null);
   }, [user]);
 
   const handleAvatarChange = async (file: File | undefined) => {
     setFeedback(null);
+    setProfileError(null);
 
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setFeedback("Alege un fișier imagine valid.");
+    if (
+      !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+      file.size > 2 * 1024 * 1024
+    ) {
+      setFeedback("Alege o imagine PNG, JPEG sau WebP de maximum 2 MB.");
       return;
     }
 
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let binary = "";
-      bytes.forEach((byte) => {
-        binary += String.fromCharCode(byte);
-      });
-      setAvatarUrl(`data:${file.type};base64,${btoa(binary)}`);
-    } catch {
-      setFeedback("Nu am putut citi imaginea aleasă.");
-    }
+    setAvatarFile(file);
+    setAvatarUrl(URL.createObjectURL(file));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFeedback(null);
+    setProfileError(null);
+    setIsSaving(true);
 
     try {
-      const updatedUser = updateMockUser({ name, accessibilityProfile, avatarUrl });
+      const uploadedAvatarUrl = avatarFile
+        ? (await uploadImage(avatarFile)).url
+        : avatarUrl;
+      const updatedUser = await updateCurrentUser({
+        name,
+        accessibilityProfile,
+        avatarUrl: uploadedAvatarUrl,
+      });
       setName(updatedUser.name);
       setAccessibilityProfile(updatedUser.accessibilityProfile);
       setAvatarUrl(updatedUser.avatarUrl);
+      setAvatarFile(null);
       setFeedback("Profilul tău a fost salvat.");
     } catch (error) {
+      setProfileError(error);
       setFeedback(error instanceof Error ? error.message : "Nu am putut salva profilul.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordFeedback(null);
+    setPasswordError(null);
+
+    if (newPassword.length < 8) {
+      setPasswordFeedback({
+        type: "error",
+        message: "Parola nouă trebuie să aibă cel puțin 8 caractere.",
+      });
+      return;
+    }
+    if (newPassword !== passwordConfirmation) {
+      setPasswordFeedback({ type: "error", message: "Parolele noi nu coincid." });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      await changeCurrentUserPassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setPasswordConfirmation("");
+      setPasswordFeedback({ type: "success", message: "Parola a fost schimbată." });
+    } catch (error) {
+      setPasswordError(error);
+      setPasswordFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Nu am putut schimba parola.",
+      });
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
   return (
     <div className="site-shell profile-shell">
+      <ErrorPopup error={profileError} />
+      <ErrorPopup error={passwordError} />
       <a className="skip-link" href="#continut">
         Sari la conținut
       </a>
@@ -142,7 +204,14 @@ export function ProfilePage() {
                         />
                       </label>
                       {avatarUrl ? (
-                        <button className="profile-remove-button" type="button" onClick={() => setAvatarUrl(null)}>
+                        <button
+                          className="profile-remove-button"
+                          type="button"
+                          onClick={() => {
+                            setAvatarFile(null);
+                            setAvatarUrl(null);
+                          }}
+                        >
                           Elimină
                         </button>
                       ) : null}
@@ -165,8 +234,8 @@ export function ProfilePage() {
                   <strong>{formatDate(user.createdAt)}</strong>
                 </div>
 
-                <button className="profile-save" type="submit">
-                  Salvează modificările
+                <button className="profile-save" type="submit" disabled={isSaving}>
+                  {isSaving ? "Se salvează…" : "Salvează modificările"}
                 </button>
                 {feedback ? <p className="profile-feedback" role="status">{feedback}</p> : null}
               </form>
@@ -199,6 +268,61 @@ export function ProfilePage() {
                   ))}
                 </div>
               </section>
+
+              <form className="profile-card profile-card--password" onSubmit={handlePasswordSubmit}>
+                <div className="profile-card-heading">
+                  <span className="profile-icon"><KeyRound size={20} aria-hidden="true" /></span>
+                  <div>
+                    <h2>Parolă</h2>
+                    <p>Alege o parolă nouă pentru contul tău.</p>
+                  </div>
+                </div>
+
+                <label className="profile-field">
+                  <span>Parola curentă</span>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </label>
+                <label className="profile-field">
+                  <span>Parola nouă</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </label>
+                <label className="profile-field">
+                  <span>Confirmă parola nouă</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={passwordConfirmation}
+                    onChange={(event) => setPasswordConfirmation(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </label>
+                <button className="profile-save" type="submit" disabled={isChangingPassword}>
+                  {isChangingPassword ? "Se schimbă…" : "Schimbă parola"}
+                </button>
+                {passwordFeedback ? (
+                  <p
+                    className={`profile-feedback${passwordFeedback.type === "error" ? " profile-feedback--error" : ""}`}
+                    role={passwordFeedback.type === "error" ? "alert" : "status"}
+                  >
+                    {passwordFeedback.message}
+                  </p>
+                ) : null}
+              </form>
             </div>
 
           </section>

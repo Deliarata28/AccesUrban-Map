@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import {
   CheckCircle2,
@@ -21,12 +21,13 @@ import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { ChoiceMenu } from "../../components/ChoiceMenu";
+import { ErrorPopup } from "../../components/ErrorPopup";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import {
-  createMockReport,
   reportTypeLabels,
-  type MockReportType,
-} from "../../stores/reportStore";
+  submitApiReport,
+  type AppReportType,
+} from "../../services/reportsApi";
 import type { Position } from "../../types/place";
 import "./Reports.css";
 
@@ -48,23 +49,29 @@ export function ReportDialog({
   onClose: () => void;
 }) {
   const user = useCurrentUser();
-  const [type, setType] = useState<MockReportType>("BLOCKED_RAMP");
+  const [type, setType] = useState<AppReportType>("BLOCKED_RAMP");
   const [description, setDescription] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoName, setPhotoName] = useState("");
   const [photoError, setPhotoError] = useState("");
   const [reading, setReading] = useState(false);
   const readVersion = useRef(0);
+  const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: async () =>
-      createMockReport({
+      submitApiReport({
         placeId: target.id,
         placeName: target.name,
         position: target.position,
         type,
         description,
-        photoUrl: photo,
+        photo: photoFile,
       }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["reports"] });
+      void queryClient.invalidateQueries({ queryKey: ["public-reports"] });
+    },
   });
   const selectPhoto = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -84,6 +91,7 @@ export function ReportDialog({
     reader.onload = () => {
       if (version !== readVersion.current) return;
       setPhoto(String(reader.result));
+      setPhotoFile(file);
       setPhotoName(file.name);
       setReading(false);
     };
@@ -185,7 +193,7 @@ export function ReportDialog({
                   value: key,
                   label,
                 }))}
-                onChange={(value) => setType(value as MockReportType)}
+                onChange={(value) => setType(value as AppReportType)}
               />
             </div>
             <div className="field">
@@ -233,6 +241,7 @@ export function ReportDialog({
                     onClick={() => {
                       readVersion.current++;
                       setPhoto(null);
+                      setPhotoFile(null);
                       setPhotoName("");
                       setReading(false);
                     }}
@@ -242,15 +251,11 @@ export function ReportDialog({
                 </div>
               )}
               {photoError && (
-                <p className="form-error" role="alert">
-                  {photoError}
-                </p>
+                <ErrorPopup message={photoError} />
               )}
             </div>
             {mutation.error && (
-              <p className="form-error" role="alert">
-                {mutation.error.message}
-              </p>
+              <ErrorPopup error={mutation.error} />
             )}
             <DialogFooter>
               <Button variant="outline" type="button" onClick={onClose}>

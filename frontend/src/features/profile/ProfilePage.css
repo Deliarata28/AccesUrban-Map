@@ -293,6 +293,10 @@
   text-align: center;
 }
 
+.profile-feedback--error {
+  color: #a13a49;
+}
+
 .profile-options {
   display: grid;
   gap: 8px;
