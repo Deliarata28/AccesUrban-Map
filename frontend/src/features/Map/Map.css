@@ -1552,15 +1552,23 @@
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  border: 1px solid #d9e5e8;
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 8px;
-  color: #315b75;
-  background: #fffefa;
+  color: #ffffff;
+  background: #204d6b;
+  cursor: pointer;
+}
+.map-pick-message > button svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 3;
 }
 .map-pick-message > button:hover,
 .map-pick-message > button:focus-visible {
-  color: #183f59;
-  background: #eaf3f5;
+  color: #ffffff;
+  background: #163b55;
+  outline: 3px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
 }
 .map-feedback,
 .map-network-note {
@@ -1603,6 +1611,13 @@
 }
 .map-network-note {
   bottom: 110px;
+}
+.map-network-note small {
+  display: block;
+  color: #a27b61;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 @media (max-width: 700px) {
   .urban-map {
@@ -1715,4 +1730,321 @@
   border-radius: 11px;
   font-size: 13px;
   color: #5e7b8c;
+}
+
+@media (max-width: 700px) {
+  .urban-map {
+    min-height: 0;
+    border-radius: 12px;
+  }
+
+  .urban-map-toolbar {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    gap: 8px;
+  }
+
+  .urban-map-toolbar > .location-search,
+  .urban-map-toolbar > .location-search > input {
+    min-width: 0;
+  }
+
+  .urban-map-toolbar > .location-search > input,
+  .urban-map-toolbar > button {
+    height: 44px;
+  }
+
+  .urban-map-toolbar > button {
+    width: 44px;
+    flex: 0 0 44px;
+    border-radius: 12px;
+  }
+
+  .urban-map-tools {
+    top: 69px;
+    right: 12px;
+    gap: 6px;
+  }
+
+  .urban-map-tools button[data-slot] {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+  }
+
+  .map-center-control,
+  .map-center-control.is-panel-open {
+    top: 244px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+  }
+
+  .urban-map-panel {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    max-width: none;
+    max-height: min(62%, calc(100% - 128px));
+    border-radius: 17px;
+  }
+
+  .urban-map-panel.is-picking {
+    max-height: 94px;
+  }
+
+  .map-panel-heading {
+    min-height: 58px;
+    padding: 12px 14px;
+  }
+
+  .map-panel-heading h2 {
+    margin-top: 2px;
+    font-size: 18px;
+  }
+
+  .map-panel-heading > button {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+  }
+
+  .map-panel-body {
+    gap: 13px;
+    padding: 14px;
+  }
+
+  .map-place-list-item {
+    min-height: 67px;
+    padding: 13px 14px;
+  }
+
+  .route-endpoint {
+    gap: 6px;
+  }
+
+  .route-endpoint > .location-search {
+    min-width: 0;
+  }
+
+  .route-endpoint > button[data-slot] {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+  }
+
+  .route-endpoint .location-search > input {
+    height: 44px;
+    padding-inline: 10px;
+    font-size: 14px;
+  }
+
+  .route-live-location {
+    width: 100%;
+    min-height: 44px;
+    justify-content: flex-start;
+    padding: 9px 10px;
+    text-align: left;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .route-swap {
+    margin: -11px 8px -11px auto;
+  }
+
+  .map-bottom-bar {
+    left: 12px;
+    right: 60px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .map-legend {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+    gap: 7px;
+    padding: 7px 8px;
+  }
+
+  .map-legend > span {
+    font-size: 9px;
+  }
+
+  .map-feedback,
+  .map-network-note {
+    left: 12px;
+    right: 60px;
+    top: 118px;
+    bottom: auto;
+    max-width: none;
+  }
+
+  .map-network-note {
+    top: 170px;
+  }
+
+  .urban-map.has-panel .urban-map-toolbar,
+  .urban-map.has-panel .urban-map-tools,
+  .urban-map.has-panel .map-center-control,
+  .urban-map.has-panel .map-bottom-bar,
+  .urban-map.has-panel .map-pick-message,
+  .urban-map.has-panel .map-feedback,
+  .urban-map.has-panel .map-network-note,
+  .urban-map.has-panel .urban-map-canvas .maplibregl-ctrl {
+    display: none;
+  }
+
+  .urban-map.has-panel .urban-map-panel {
+    inset: 0;
+    z-index: 30;
+    width: auto;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .urban-map.has-panel .map-panel-heading {
+    min-height: 68px;
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-right: 14px;
+    padding-bottom: 10px;
+    padding-left: 18px;
+  }
+
+  .urban-map.has-panel .map-panel-heading > div > span {
+    display: block;
+    font-size: 10px;
+  }
+
+  .urban-map.has-panel .map-panel-heading h2 {
+    font-size: 21px;
+  }
+
+  .urban-map.has-panel .map-panel-body {
+    padding: 18px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+
+  .urban-map.has-panel .map-place-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 380px) {
+  .urban-map-tools {
+    top: 67px;
+  }
+
+  .urban-map-tools button[data-slot],
+  .map-center-control,
+  .map-center-control.is-panel-open {
+    width: 37px;
+    height: 37px;
+  }
+
+  .map-center-control,
+  .map-center-control.is-panel-open {
+    top: 230px;
+  }
+
+  .map-legend > span {
+    font-size: 8px;
+  }
+}
+
+/* Pe ecrane mici, acțiunile hărții devin un dock orizontal compact. */
+@media (max-width: 700px) {
+  .urban-map-toolbar > .location-search {
+    flex: 1 1 100%;
+  }
+
+  .urban-map-toolbar > button {
+    position: absolute;
+    top: 52px;
+    right: 52px;
+    z-index: 2;
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  .urban-map-tools {
+    top: 64px;
+    right: 120px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px;
+    border: 1px solid rgba(214, 224, 227, 0.94);
+    border-radius: 13px;
+    background: rgba(255, 254, 250, 0.94);
+    box-shadow: 0 8px 20px rgba(35, 72, 107, 0.14);
+  }
+
+  .urban-map-tools .map-tool-motion {
+    display: grid;
+    flex: 1 1 0;
+  }
+
+  .urban-map-tools button[data-slot] {
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    border-radius: 9px;
+  }
+
+  .map-center-control,
+  .map-center-control.is-panel-open {
+    top: 64px;
+    right: 12px;
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  .map-pick-message,
+  .map-feedback,
+  .map-network-note {
+    top: 124px;
+  }
+
+  .map-network-note {
+    top: 176px;
+  }
+}
+
+@media (max-width: 320px) {
+  .urban-map-tools {
+    right: 112px;
+    left: 8px;
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .urban-map-tools button[data-slot] {
+    height: 36px;
+  }
+
+  .map-center-control,
+  .map-center-control.is-panel-open {
+    right: 8px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .urban-map-toolbar > button {
+    right: 52px;
+    width: 44px;
+    height: 44px;
+  }
 }

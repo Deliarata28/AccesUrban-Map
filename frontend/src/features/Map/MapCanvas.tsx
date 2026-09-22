@@ -12,6 +12,7 @@ import type { GeoJSONSource } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import type { MapPlace, Position } from "../../types/place";
 import { statusMeta } from "../../config/accessibility";
+import { ErrorPopup } from "../../components/ErrorPopup";
 import { evaluateAccessibility } from "../../utils/accessibility";
 import type { ParkingLocation } from "./Parking";
 import type { TravelMode } from "./routing";
@@ -391,7 +392,11 @@ export function MapCanvas({
                     className={`map-obstacle-tooltip is-${point.status}`}
                     role="tooltip"
                   >
-                    <span className="map-obstacle-tooltip-label">OBSTACOL PE TRASEU</span>
+                    <span className="map-obstacle-tooltip-label">
+                      {point.osmType === "route-checkpoint"
+                        ? "PUNCT DE VERIFICAT"
+                        : "OBSTACOL PE TRASEU"}
+                    </span>
                     <strong>{point.kind}</strong>
                     <span>{point.streetName}</span>
                     <b className={`map-obstacle-passage is-${point.status}`}>
@@ -468,15 +473,9 @@ export function MapCanvas({
         </div>
       )}
       {error && (
-        <div className="map-network-note" role="status">
-          {error}
-          <button
-            aria-label="Închide mesajul hărții"
-            onClick={() => setError("")}
-          >
-            ×
-          </button>
-        </div>
+        <ErrorPopup
+          message={error}
+        />
       )}
     </>
   );

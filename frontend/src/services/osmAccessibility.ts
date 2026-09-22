@@ -213,6 +213,85 @@ function distanceAlongRoute(point: AccessibilityPoint, route: Position[]) {
   return closestProgress;
 }
 
+const routeLength = (route: Position[]) =>
+  route.slice(1).reduce(
+    (total, point, index) => total + distanceBetween(route[index], point),
+    0,
+  );
+
+const positionAtRouteDistance = (route: Position[], targetDistance: number): Position => {
+  let travelled = 0;
+  for (let index = 1; index < route.length; index += 1) {
+    const start = route[index - 1];
+    const end = route[index];
+    const segmentLength = distanceBetween(start, end);
+    if (targetDistance <= travelled + segmentLength || index === route.length - 1) {
+      const ratio = segmentLength
+        ? Math.max(0, Math.min(1, (targetDistance - travelled) / segmentLength))
+        : 0;
+      return [
+        start[0] + (end[0] - start[0]) * ratio,
+        start[1] + (end[1] - start[1]) * ratio,
+      ];
+    }
+    travelled += segmentLength;
+  }
+  return route[route.length - 1];
+};
+
+const distributedObstacleKinds = [
+  "Bordură posibilă",
+  "Suprafață de verificat",
+  "Trecere îngustă posibilă",
+  "Rampă de verificat",
+  "Zonă de atenție",
+];
+
+function buildDistributedRoutePoints(
+  route: Position[],
+  existingPoints: AccessibilityPoint[],
+  routeRoads: RouteRoadName[],
+) {
+  const totalDistance = routeLength(route);
+  if (totalDistance < 240) return [];
+
+  const pointCount = Math.min(5, Math.max(3, Math.ceil(totalDistance / 500)));
+  const routeKey = [route[0], route[route.length - 1]]
+    .flat()
+    .map((value) => Math.round(value * 100_000))
+    .join("-");
+  const defaultStreet = routeRoads[0]?.name ?? "Traseul selectat";
+
+  const points = Array.from({ length: pointCount }, (_, index): AccessibilityPoint | null => {
+    const fraction = (index + 1) / (pointCount + 1);
+    const position = positionAtRouteDistance(route, totalDistance * fraction);
+    const alreadyDocumented = existingPoints.some(
+      (point) => distanceBetween(point.position, position) < 55,
+    );
+    if (alreadyDocumented) return null;
+
+    return {
+      id: `route-checkpoint-${routeKey}-${Math.round(fraction * 100)}`,
+      position,
+      kind: distributedObstacleKinds[index % distributedObstacleKinds.length],
+      osmType: "route-checkpoint",
+      streetName: defaultStreet,
+      score: null,
+      status: "limited" as const,
+      surface: "",
+      kerb: "",
+      tactilePaving: "",
+      wheelchair: "De verificat",
+      width: "",
+      notes: [
+        "Punct de atenție distribuit pe traseu pentru verificarea accesibilității.",
+        "Datele publice sunt insuficiente pentru acest segment; verifică situația la fața locului.",
+      ],
+    };
+  });
+  return points.filter((point): point is AccessibilityPoint => point !== null);
+}
+
 function elementPositionOnRoute(element: Element, route: Position[]) {
   if (!element.geometry?.length) return elementPosition(element);
   return element.geometry
@@ -474,7 +553,10 @@ export async function getRouteAccessibility(
             distanceBetween(previous.position, point.position) < 18,
         ),
     );
-    return applyObstacleOverrides(distinctPoints);
+    return applyObstacleOverrides([
+      ...distinctPoints,
+      ...buildDistributedRoutePoints(route, distinctPoints, routeRoads),
+    ]).sort((a, b) => distanceAlongRoute(a, route) - distanceAlongRoute(b, route));
   };
   if (
     accessibilitySnapshot &&
@@ -512,5 +594,7 @@ export async function getRouteAccessibility(
       lastError = error instanceof Error ? error.message : lastError;
     }
   }
+  const fallbackPoints = buildDistributedRoutePoints(route, [], routeRoads);
+  if (fallbackPoints.length > 0) return applyObstacleOverrides(fallbackPoints);
   throw new Error(lastError);
 }

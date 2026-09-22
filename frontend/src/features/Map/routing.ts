@@ -1,4 +1,4 @@
-import type { AccessibilityProfile } from "../../stores/authStore";
+import type { AccessibilityProfile } from "../../stores/sessionStore";
 import type { Position } from "../../types/place";
 
 export type TravelMode = "foot" | "driving";
@@ -364,10 +364,10 @@ const stepInstruction = (
   }
 
   const directions: Record<string, { title: string; symbol: string }> = {
-    left: { title: "Virează spre stânga", symbol: "↰" },
+    left: { title: "Virează la stânga", symbol: "↰" },
     "slight left": { title: "Ține ușor spre stânga", symbol: "↖" },
     "sharp left": { title: "Virează strâns spre stânga", symbol: "↰" },
-    right: { title: "Virează spre dreapta", symbol: "↱" },
+    right: { title: "Virează la dreapta", symbol: "↱" },
     "slight right": { title: "Ține ușor spre dreapta", symbol: "↗" },
     "sharp right": { title: "Virează strâns spre dreapta", symbol: "↱" },
     straight: { title: "Continuă înainte", symbol: "↑" },
@@ -447,11 +447,11 @@ const graphHopperInstructionTitle = (
   const roadContext = roadName ? ` pe ${roadName}` : "";
   const titleBySign: Record<number, string> = {
     "-3": "Virează strâns spre stânga",
-    "-2": "Virează spre stânga",
+    "-2": "Virează la stânga",
     "-1": "Ține ușor spre stânga",
     0: "Continuă",
     1: "Ține ușor spre dreapta",
-    2: "Virează spre dreapta",
+    2: "Virează la dreapta",
     3: "Virează strâns spre dreapta",
     4: "Ai ajuns la destinație",
     6: "Intră în sensul giratoriu",

@@ -1,33 +1,118 @@
+.map-page {
+  height: 100dvh;
+  overflow: hidden;
+  background: #e8ece8;
+}
+
+.map-page-topbar {
+  position: relative;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 58px;
+  gap: 12px;
+  padding: 8px max(12px, calc((100% - 1720px) / 2));
+  border-bottom: 1px solid #dce5e3;
+  background: rgba(247, 250, 247, .94);
+  box-shadow: 0 8px 22px rgba(32, 58, 71, .08);
+  backdrop-filter: blur(16px);
+}
+
+.map-page-back,
+.map-page-home,
+.map-page-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #315f7c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.map-page-back,
+.map-page-home {
+  min-height: 40px;
+  width: max-content;
+  padding: 0 11px;
+  border: 1px solid #d5e1e2;
+  border-radius: 10px;
+  background: #fffefa;
+  box-shadow: 0 3px 10px rgba(38, 73, 103, .08);
+}
+
+.map-page-back:hover,
+.map-page-back:focus-visible,
+.map-page-home:hover,
+.map-page-home:focus-visible {
+  color: #1f4d70;
+  background: #edf4f5;
+  outline: 2px solid #8aafc266;
+  outline-offset: 1px;
+}
+
+.map-page-home { justify-self: end; }
+
+.map-page-brand {
+  justify-self: center;
+  color: #234e77;
+  font-size: 15px;
+}
+
+.map-page-brand img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
 .map-page-shell {
-  width: min(100% - 32px, 1720px);
-  margin: 16px auto;
-  flex: none;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  flex: 1;
+  display: flex;
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border-radius: 24px;
-  box-shadow: 0 28px 72px rgba(22, 32, 51, 0.2);
 }
 
 .map-page-shell .map-workspace {
-  height: clamp(470px, calc(100dvh - 112px), 820px);
+  width: 100%;
+  height: 100%;
   min-height: 0;
+  flex: 1;
+  border-radius: 0;
+  border-inline: 0;
+  border-bottom: 0;
 }
 
 .map-page .skip-link {
   z-index: 50;
 }
 
-@media (max-width: 1100px) {
-  .map-page-shell .map-workspace {
-    height: clamp(430px, 65dvh, 610px);
-  }
-}
-
 @media (max-width: 560px) {
-  .map-page-shell {
-    width: calc(100% - 24px);
-    margin-block: 16px;
-    border-radius: 20px;
+  .map-page-topbar {
+    min-height: 52px;
+    padding: 6px 8px;
+  }
+
+  .map-page-back,
+  .map-page-home {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .map-page-back span,
+  .map-page-home span,
+  .map-page-brand span {
+    display: none;
+  }
+
+  .map-page-brand img {
+    width: 36px;
+    height: 36px;
   }
 }

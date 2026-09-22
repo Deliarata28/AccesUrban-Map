@@ -1,5 +1,5 @@
 import type { AccessibilityPoint } from "../services/osmAccessibility";
-import { requireMockAdmin } from "./authStore";
+import { getCurrentUser } from "./sessionStore";
 import { readCollection, writeCollection } from "./mockStorage";
 
 const KEY = "accessible-map:obstacle-overrides:v1";
@@ -25,7 +25,9 @@ export function applyObstacleOverrides(points: AccessibilityPoint[]) {
 }
 
 export function saveObstacleOverride(point: AccessibilityPoint) {
-  requireMockAdmin();
+  if (getCurrentUser()?.role !== "ADMIN") {
+    throw new Error("Doar administratorul poate modifica un obstacol.");
+  }
   const overrides = getObstacleOverrides();
   const updated: ObstacleOverride = {
     ...point,

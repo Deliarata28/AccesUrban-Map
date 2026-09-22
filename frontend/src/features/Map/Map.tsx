@@ -8,6 +8,7 @@ import {
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { ChoiceMenu } from "../../components/ChoiceMenu";
+import { ErrorPopup } from "../../components/ErrorPopup";
 import { usePlaces, usePublicReports } from "../../hooks/useAppData";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import {
@@ -17,8 +18,8 @@ import {
   sourceLabels,
   statusMeta,
 } from "../../config/accessibility";
-import type { AccessibilityProfile } from "../../stores/authStore";
-import { reportTypeLabels, type MockReportType } from "../../stores/reportStore";
+import type { AccessibilityProfile } from "../../stores/sessionStore";
+import { reportTypeLabels, type AppReportType } from "../../services/reportsApi";
 import { applyObstacleOverrides } from "../../stores/obstacleStore";
 import type { MapPlace, Position } from "../../types/place";
 import {
@@ -81,23 +82,6 @@ const pointReportTarget = (
 
 const isDocumented = (value: string) =>
   Boolean(value.trim()) && !/neconfirmat|necunoscut/i.test(value);
-
-const accessibilityDetails = (point: AccessibilityPoint) =>
-  [
-    isDocumented(point.surface) ? `Suprafață: ${point.surface.toLowerCase()}` : "",
-    isDocumented(point.kerb) ? `Bordură: ${point.kerb.toLowerCase()}` : "",
-    isDocumented(point.tactilePaving)
-      ? `Pavaj tactil: ${point.tactilePaving.toLowerCase()}`
-      : "",
-  ].filter(Boolean).join(" · ");
-
-const accessibilityAccessDetails = (point: AccessibilityPoint) =>
-  [
-    isDocumented(point.wheelchair)
-      ? `Acces rulant: ${point.wheelchair.toLowerCase()}`
-      : "",
-    isDocumented(point.width) ? `Lățime: ${point.width.toLowerCase()}` : "",
-  ].filter(Boolean).join(" · ");
 
 const distanceBetweenPositions = (a: Position, b: Position) => {
   const earthRadius = 6_371_000;
@@ -171,7 +155,7 @@ const progressAlongRoute = (position: Position, route: Position[]) => {
   return closestProgress;
 };
 
-const reportObstacleKinds: Record<MockReportType, string> = {
+const reportObstacleKinds: Record<AppReportType, string> = {
   BLOCKED_RAMP: "Rampă blocată",
   DAMAGED_SIDEWALK: "Trotuar deteriorat",
   BROKEN_ELEVATOR: "Lift indisponibil",
@@ -179,7 +163,7 @@ const reportObstacleKinds: Record<MockReportType, string> = {
   OTHER: "Obstacol raportat",
 };
 
-const reportObstacleScores: Record<MockReportType, number> = {
+const reportObstacleScores: Record<AppReportType, number> = {
   BLOCKED_RAMP: 25,
   DAMAGED_SIDEWALK: 45,
   BROKEN_ELEVATOR: 30,
@@ -229,6 +213,7 @@ export function Map() {
   const [locationState, setLocationState] = useState<
     "idle" | "loading" | "active" | "error"
   >("idle");
+  const liveLocationWatch = useRef<number | null>(null);
   const pointLookup = useRef<AbortController | null>(null);
   const pointLookupVersion = useRef(0);
   const [selectedAccessibilityPoint, setSelectedAccessibilityPoint] =
@@ -252,18 +237,16 @@ export function Map() {
       Universitate: 4,
       Școală: 5,
       Transport: 6,
-      "Centru comercial": 7,
-      Parc: 8,
-      Muzeu: 9,
-      Catedrală: 10,
-      Aeroport: 11,
-      "Clădire istorică": 12,
+      Magazin: 7,
+      "Centru comercial": 8,
+      Restaurant: 9,
+      Parc: 10,
+      Muzeu: 11,
+      Catedrală: 12,
+      Aeroport: 13,
+      "Clădire istorică": 14,
     };
     return filtered
-      .filter((place) => {
-        const assessment = evaluateAccessibility(place.accessibility);
-        return categoryPriority[place.category] !== undefined && assessment.known > 0;
-      })
       .sort((a, b) => {
         const categoryOrder =
           (categoryPriority[a.category] ?? 99) - (categoryPriority[b.category] ?? 99);
@@ -400,6 +383,13 @@ export function Map() {
   useEffect(() => {
     return () => {
       pointLookup.current?.abort();
+    };
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (liveLocationWatch.current !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(liveLocationWatch.current);
+      }
     };
   }, []);
   useEffect(() => {
@@ -587,20 +577,38 @@ export function Map() {
       setMessage("Browserul nu oferă acces la locația live.");
       return;
     }
+    if (!window.isSecureContext) {
+      setLocationState("error");
+      setMessage("Localizarea live funcționează pe localhost sau prin HTTPS.");
+      return;
+    }
     if (locationState === "loading") return;
+    if (locationState === "active" && livePosition) {
+      setTarget(livePosition);
+      setMessage("Harta a fost centrată pe locația ta live.");
+      return;
+    }
     setLocationState("loading");
-    navigator.geolocation.getCurrentPosition(
+    liveLocationWatch.current = navigator.geolocation.watchPosition(
       ({ coords }) => {
         const position: Position = [coords.latitude, coords.longitude];
         setLivePosition(position);
         setOrigin({ label: "Locația mea live", position });
         setTarget(position);
         setLocationState("active");
-        setMessage("Locația live a fost aleasă ca punct de plecare.");
+        setMessage("Locația ta live este activă și este punctul de plecare.");
       },
-      () => {
+      (error) => {
+        if (liveLocationWatch.current !== null) {
+          navigator.geolocation.clearWatch(liveLocationWatch.current);
+          liveLocationWatch.current = null;
+        }
         setLocationState("error");
-        setMessage("Nu am putut obține locația live. Permite accesul și încearcă din nou.");
+        setMessage(
+          error.code === error.PERMISSION_DENIED
+            ? "Permite locația pentru acest site în browser și încearcă din nou."
+            : "Nu am putut obține locația live. Verifică semnalul GPS și încearcă din nou.",
+        );
       },
       { enableHighAccuracy: true, maximumAge: 10_000, timeout: 15_000 },
     );
@@ -626,7 +634,7 @@ export function Map() {
   };
   return (
     <section
-      className="map-workspace urban-map"
+      className={`map-workspace urban-map${panel ? " has-panel" : ""}`}
       aria-label="Hartă și locații accesibile"
     >
               <MapCanvas
@@ -858,10 +866,7 @@ export function Map() {
         </div>
       )}
       {placesQuery.error && (
-        <div className="map-feedback" role="alert">
-          {placesQuery.error.message}
-          <Button onClick={() => void placesQuery.refetch()}>Reîncearcă</Button>
-        </div>
+        <ErrorPopup error={placesQuery.error} onRetry={() => void placesQuery.refetch()} />
       )}
       <AnimatePresence mode="wait" initial={false}>
         {panel && (
@@ -1255,7 +1260,9 @@ export function Map() {
                 <LocateFixed />
                 {locationState === "loading"
                   ? "Se caută locația live…"
-                  : "Folosește locația mea live ca plecare"}
+                  : locationState === "active"
+                    ? "Centrează pe locația mea live"
+                    : "Folosește locația mea live ca plecare"}
               </Button>
               <div className="route-swap">
                 <Button
@@ -1334,9 +1341,7 @@ export function Map() {
               ) : routesQuery.isPending ? (
                 <p role="status">Se compară variantele de traseu…</p>
               ) : routesQuery.error ? (
-                <div className="form-error" role="alert">
-                  {routesQuery.error.message}
-                </div>
+                <ErrorPopup error={routesQuery.error} />
               ) : (
                 <>
                   <div
@@ -1397,70 +1402,6 @@ export function Map() {
                           <small>Durată estimată</small>
                         </div>
                       </div>
-                      {routeAccessibilityQuery.isPending && (
-                        <div className="route-accessibility-loading" role="status">
-                          <strong>Se verifică traseul</strong>
-                          <span>Se caută suprafața, trecerile și obstacolele documentate pe OpenStreetMap.</span>
-                          <i aria-hidden="true" />
-                          <i aria-hidden="true" />
-                          <i aria-hidden="true" />
-                        </div>
-                      )}
-                      {routeAccessibilityQuery.isError && (
-                        <p className="route-accessibility-error" role="alert">
-                          {routeAccessibilityQuery.error instanceof Error
-                            ? routeAccessibilityQuery.error.message
-                            : "Avertizările de pe traseu nu au putut fi încărcate."}
-                        </p>
-                      )}
-                      {!routeAccessibilityQuery.isPending &&
-                        !routeAccessibilityQuery.isError &&
-                        accessibilityPoints.length === 0 && (
-                          <div className="route-accessibility-empty">
-                            <strong>Nu au fost găsite obstacole documentate pe această rută.</strong>
-                            <span>Harta afișează doar elementele cu avertizare confirmate în datele OpenStreetMap.</span>
-                          </div>
-                        )}
-                      {accessibilityPoints.length > 0 && (
-                        <section className="route-accessibility-summary" aria-label="Accesibilitate pe traseu">
-                          <div className="route-accessibility-summary-heading">
-                            <div>
-                              <span>DOCUMENTATE PE TRASEUL ALES</span>
-                              <h3>Obstacole pe traseu</h3>
-                            </div>
-                            <strong>
-                              {accessibilityPoints.length} găsite
-                            </strong>
-                          </div>
-                          <p>
-                            Obstacolele documentate sunt afișate pe tot parcursul rutei A–B, în ordinea deplasării. Scorul fiecăruia este calculat din datele disponibile.
-                          </p>
-                          <div className="route-accessibility-stats" aria-label="Rezumat accesibilitate traseu">
-                            <span className="is-warning">{routeWarningPoints.filter((point) => point.status === "limited").length} limitate</span>
-                            <span className="is-problem">{routeWarningPoints.filter((point) => point.status === "problem").length} probleme</span>
-                          </div>
-                          <div className="route-accessibility-items">
-                            {accessibilityPoints.map((point) => (
-                              <button
-                                type="button"
-                                key={point.id}
-                                className={`route-obstacle-card is-${point.status}`}
-                                aria-label={`${point.kind}, ${point.streetName}, scor ${point.score === null ? "nedisponibil" : `${point.score} din 100`}`}
-                                onClick={() => focusAccessibilityPoint(point)}
-                              >
-                                <span className={`accessibility-mini-dot is-${point.status}`} />
-                                <span>
-                                  <b>{point.kind} · {point.streetName}</b>
-                                  {accessibilityDetails(point) && <small>{accessibilityDetails(point)}</small>}
-                                  {accessibilityAccessDetails(point) && <small>{accessibilityAccessDetails(point)}</small>}
-                                  <small>{point.notes[0] ?? "Detalii despre obstacol disponibile la deschidere."}</small>
-                                </span>
-                                <strong>{point.score === null ? "—" : `${point.score}/100`}</strong>
-                              </button>
-                            ))}
-                          </div>
-                        </section>
-                      )}
                       {routeGuidance.length > 0 && (
                         <section
                           className="route-guidance"
