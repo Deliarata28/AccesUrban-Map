@@ -1,0 +1,144 @@
+.error-popup {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 120;
+  display: flex;
+  width: min(480px, calc(100vw - 28px));
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid #e6b8b8;
+  border-radius: 15px;
+  color: #6f3034;
+  background: #fffafa;
+  box-shadow: 0 18px 48px rgba(68, 30, 34, 0.24);
+  transform: translateX(-50%);
+  animation: error-popup-enter 220ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes error-popup-enter {
+  from { opacity: 0; transform: translate(-50%, -12px) scale(.97); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+.error-popup-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 10px;
+  color: #a2393f;
+  background: #f9e4e4;
+}
+
+.error-popup-content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
+}
+
+.error-popup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #7e2932;
+  font-size: 14px;
+}
+
+.error-popup-heading strong { font-weight: 750; }
+
+.error-popup-close {
+  display: grid;
+  place-items: center;
+  border: 0;
+  color: #8d6266;
+  background: transparent;
+  cursor: pointer;
+}
+
+.error-popup-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.error-popup-close:hover,
+.error-popup-close:focus-visible {
+  color: #68262d;
+  background: #f8e4e3;
+  outline: none;
+}
+
+.error-popup p {
+  margin: 0;
+  color: #704c50;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.error-popup-references {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  min-width: 0;
+}
+
+.error-popup-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #986d70;
+  font-size: 11px;
+}
+
+.error-popup-id span { flex: 0 0 auto; font-weight: 700; }
+.error-popup-id code {
+  min-width: 0;
+  overflow: hidden;
+  color: #75383d;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.error-popup-copy {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: #8d6266;
+  background: transparent;
+  cursor: pointer;
+}
+.error-popup-copy:hover,
+.error-popup-copy:focus-visible { color: #68262d; background: #f8e4e3; outline: none; }
+
+.error-popup-retry {
+  justify-self: start;
+  padding: 7px 10px;
+  border: 1px solid #d99da0;
+  border-radius: 8px;
+  color: #7d3037;
+  background: #fff;
+  font: 600 12px "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+
+.error-popup-retry:hover,
+.error-popup-retry:focus-visible { background: #fbeaea; outline: none; }
+
+@media (max-width: 560px) {
+  .error-popup {
+    top: max(10px, env(safe-area-inset-top));
+    width: calc(100vw - 20px);
+    padding: 13px;
+  }
+}
