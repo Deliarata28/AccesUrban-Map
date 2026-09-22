@@ -1,14 +1,11 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
-  getCurrentMockUser,
-  getMockAuthRevision,
-  subscribeMockAuth,
-} from "../stores/authStore";
+  getCurrentUser,
+  getSessionRevision,
+  subscribeSession,
+} from "../stores/sessionStore";
+
 export function useCurrentUser() {
-  const revision = useSyncExternalStore(
-    subscribeMockAuth,
-    getMockAuthRevision,
-    () => 0,
-  );
-  return useMemo(getCurrentMockUser, [revision]);
+  useSyncExternalStore(subscribeSession, getSessionRevision, () => 0);
+  return getCurrentUser();
 }
